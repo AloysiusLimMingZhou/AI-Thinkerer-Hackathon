@@ -235,8 +235,8 @@ that eats a day if it goes wrong, so it goes first.
   triggers the minutes at the end.
 - **`apps/api/`** — FastAPI. `POST /sessions`, WS `/sessions/{id}/stream` (captions, gate decisions,
   answers, latency), `POST /sessions/{id}/say` (manual override — genuinely useful on stage),
-  `/mute`, `/leave`, `GET /sessions/{id}/minutes`. Every event persisted to SQLite so any meeting
-  can be replayed.
+  `/mute`, `/leave`, `GET /sessions/{id}/minutes`, and a meeting-history endpoint for listing and
+  retrieving past sessions. Every event persisted to SQLite so any meeting can be replayed.
 
 **Done when:** the gate truth table passes on Track C's scripted meetings — every expected-speak
 fires and, more importantly, every expected-silence stays silent.
@@ -285,10 +285,14 @@ are the slow, bureaucratic part.
   - *pre-meeting*: paste the Meet link, pick Slack channels, review the generated briefing;
   - *live*: transcript with speaker labels, **the gate lane showing why the bot stayed quiet**, the
     bot's answers with citations, a latency readout, and a big mute/kill switch;
-  - *post*: the minutes, with copy / export / post-to-Slack.
+  - *post*: the minutes, with copy / export / post-to-Slack;
+  - *past meetings*: a searchable, manageable meeting library. Each meeting opens to its full
+    speaker-labelled transcript alongside its summary/minutes, decisions, action items, and bot
+    Q&A appendix.
 
-**Done when:** text in → audible speech out under 2.5 s, and a finished meeting produces minutes
-worth sending to a human.
+**Done when:** text in → audible speech out under 2.5 s, a finished meeting produces minutes worth
+sending to a human, and completed meetings remain available from the UI with their transcript and
+summary together.
 
 **Start on day 1:** `minutes/` needs nothing but a transcript — build it against Track C's fixture
 transcript. The UI can be built against a recorded event stream (a JSONL of session events) before
@@ -307,7 +311,7 @@ Four people only converge if there are forced convergence points.
 | **M2** | Real ElevenLabs voice on the scripted meeting; real Claude brain | B + D |
 | **M3** | Bot joins a real Meet call, captions flowing, `speak()` audible | A |
 | **M4** | **Full loop on a real call**: asked → answers → minutes | all four |
-| **M5** | UI on the projector, latency HUD, demo script rehearsed | D + all |
+| **M5** | UI on the projector, meeting history, latency HUD, demo script rehearsed | D + all |
 
 M4 is the demo. Everything after M1 is de-risking, so **get to M1 early** — it is the first point
 where the thing is recognisably the product.
