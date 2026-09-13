@@ -1,0 +1,266 @@
+.summary {
+  max-width: 50rem;
+}
+
+.tldr {
+  font-size: var(--t-21);
+  line-height: 1.45;
+  letter-spacing: -0.003em;
+  max-width: 40em;
+}
+
+.section {
+  margin-top: 36px;
+}
+
+.section h3,
+.waitingTitle {
+  font-size: var(--t-16);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.none {
+  color: var(--ink-2);
+}
+
+.at {
+  flex: none;
+  font-size: var(--t-14);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  text-decoration-color: var(--rule);
+}
+
+.at:hover {
+  color: var(--ink);
+}
+
+/* Waiting on you */
+.waiting {
+  margin-top: 28px;
+  padding: 18px 20px 20px;
+  border-radius: 10px;
+  background: var(--amber-paper);
+  box-shadow: inset 0 0 0 1px var(--amber-line);
+}
+
+.waitingTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.waitingTitle svg {
+  color: var(--amber);
+}
+
+.waitItem + .waitItem {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--amber-line);
+}
+
+.waitSummary {
+  font-size: var(--t-18);
+  font-weight: 650;
+}
+
+.waitSummary :global(.highlight) {
+  background-image: linear-gradient(transparent 52%, var(--amber-mark) 52%, var(--amber-mark) 94%, transparent 94%);
+}
+
+.waitQuote {
+  margin-top: 6px;
+  font-size: var(--t-15);
+}
+
+.waitMeta {
+  margin-top: 8px;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+
+.overdue {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+/* Decisions */
+.decisions li,
+.open li {
+  position: relative;
+  padding: 10px 0 10px 22px;
+  border-top: 1px solid var(--rule-2);
+}
+
+.decisions li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.decisions li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 18px;
+  width: 7px;
+  height: 7px;
+  background: var(--ink);
+  border-radius: 1px;
+}
+
+.open li::before {
+  content: "?";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+
+.open p:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.openNote {
+  margin-top: 2px;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+
+/* Action items */
+.actions {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-15);
+}
+
+.actions td {
+  padding: 10px 12px 10px 0;
+  border-top: 1px solid var(--rule-2);
+  vertical-align: baseline;
+}
+
+.owner {
+  width: 30%;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 9px;
+  border-radius: 50%;
+  background: var(--paper);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  translate: 0 -1px;
+}
+
+.yours .avatar {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.yours .task {
+  font-weight: 600;
+}
+
+.due {
+  width: 1%;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
+.noDue {
+  color: var(--ink-3);
+}
+
+.src {
+  width: 1%;
+  text-align: right;
+  padding-right: 0 !important;
+}
+
+/* Discussion */
+.topics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 22px 32px;
+  padding-top: 6px;
+}
+
+.topic h4 {
+  font-size: var(--t-15);
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+
+.topic li {
+  position: relative;
+  padding-left: 14px;
+  font-size: var(--t-14);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.topic li + li {
+  margin-top: 5px;
+}
+
+.topic li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.68em;
+  width: 5px;
+  height: 1.5px;
+  background: var(--pencil);
+}
+
+.provenance {
+  margin-top: 40px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule-2);
+  font-size: var(--t-14);
+  color: var(--ink-3);
+}
+
+@media (max-width: 640px) {
+  .tldr {
+    font-size: var(--t-18);
+  }
+
+  .actions,
+  .actions tbody,
+  .actions tr,
+  .actions td {
+    display: block;
+    width: auto;
+  }
+
+  .actions tr {
+    padding: 10px 0;
+    border-top: 1px solid var(--rule-2);
+  }
+
+  .actions td {
+    border: 0;
+    padding: 2px 0;
+  }
+
+  .src {
+    text-align: left;
+  }
+}

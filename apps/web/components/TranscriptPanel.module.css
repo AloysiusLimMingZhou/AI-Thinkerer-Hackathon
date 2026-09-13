@@ -1,0 +1,267 @@
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin: -28px -28px 0;
+  padding: 16px 28px 14px;
+  background: color-mix(in srgb, var(--sheet) 94%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--rule-2);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  max-width: 320px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--sheet);
+  color: var(--ink-3);
+}
+
+.search:focus-within {
+  border-color: var(--ink);
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-14);
+  outline: none;
+}
+
+.search input::placeholder {
+  color: var(--ink-3);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.switch {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--rule);
+  transition: background-color 150ms ease;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--sheet);
+  box-shadow: 0 1px 2px rgb(27 33 55 / 0.3);
+  transition: translate 150ms ease;
+}
+
+.toggle[aria-pressed="true"] {
+  color: var(--ink);
+}
+
+.toggle[aria-pressed="true"] .switch {
+  background: var(--onair);
+}
+
+.toggle[aria-pressed="true"] .switch::after {
+  translate: 12px 0;
+}
+
+.count {
+  font-size: var(--t-14);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.download {
+  margin-left: auto;
+}
+
+.source {
+  margin: 14px 0 6px;
+  font-size: var(--t-14);
+  color: var(--ink-3);
+}
+
+.lines {
+  margin: 0 -28px;
+}
+
+.line {
+  display: grid;
+  grid-template-columns: 72px 150px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 16px;
+  padding: 9px 28px 9px 25px;
+  border-left: 3px solid transparent;
+  scroll-margin-block: 120px;
+}
+
+.repeat {
+  padding-top: 0;
+}
+
+.time {
+  padding-top: 3px;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.repeat .time {
+  visibility: hidden;
+}
+
+.line:hover .time {
+  visibility: visible;
+}
+
+.who {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+  font-size: var(--t-14);
+  font-weight: 650;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.who :global(.lamp) {
+  translate: 0 -1px;
+  align-self: center;
+}
+
+.chatTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--t-12);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.body {
+  min-width: 0;
+  max-width: 68ch;
+}
+
+.text {
+  font-size: var(--t-15);
+  line-height: 1.6;
+}
+
+.text mark {
+  background: var(--find-wash);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Aloy-bot's lines carry the on-air rule. */
+.agent {
+  border-left-color: var(--onair);
+  background: linear-gradient(to right, var(--onair-wash), transparent 55%);
+}
+
+.chat.agent {
+  background: none;
+}
+
+.note {
+  display: flex;
+  gap: 7px;
+  margin-top: 6px;
+  font-size: var(--t-14);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--onair);
+}
+
+.note strong {
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 28px 0;
+  color: var(--ink-2);
+}
+
+@media (max-width: 760px) {
+  .toolbar {
+    margin: -22px -16px 0;
+    padding: 12px 16px;
+  }
+
+  /* The header already has Download transcript; keep the sticky bar short. */
+  .download {
+    display: none;
+  }
+
+  .lines {
+    margin: 0 -16px;
+  }
+
+  /* Time and name share a row so the verbatim text gets the full width. */
+  .line {
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 10px;
+    padding: 8px 16px 8px 13px;
+  }
+
+  .time {
+    grid-row: 1;
+    grid-column: 1;
+    padding-top: 2px;
+  }
+
+  .who {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .body {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+
+  .repeat .time {
+    display: none;
+  }
+}

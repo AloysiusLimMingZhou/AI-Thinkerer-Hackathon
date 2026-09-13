@@ -1,0 +1,38 @@
+.strip {
+  position: relative;
+  height: 22px;
+}
+
+/* The meeting's extent: a hairline from start to end, so silence has a length too. */
+.strip::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 1px;
+  background: var(--rule);
+}
+
+.human,
+.agent {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  min-width: 1.5px;
+  border-radius: 1px;
+}
+
+.human {
+  height: 8px;
+  background: var(--pencil);
+  /* 1px surface gap so neighbouring turns stay distinct */
+  box-shadow: 1px 0 0 var(--sheet);
+}
+
+.agent {
+  height: 20px;
+  min-width: 4px;
+  background: var(--onair);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1.5px var(--sheet);
+  z-index: 1;
+}

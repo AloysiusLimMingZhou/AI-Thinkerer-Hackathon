@@ -1,0 +1,358 @@
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 44px var(--gutter) 96px;
+}
+
+/* Opening statement */
+.intro {
+  margin-bottom: 44px;
+}
+
+.intro h1 {
+  font-size: clamp(2.25rem, 1.1rem + 3.3vw, 3.75rem);
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: -0.012em;
+  max-width: 22ch;
+}
+
+.intro p {
+  margin-top: 16px;
+  max-width: 40rem;
+  font-size: var(--t-18);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 40px;
+  align-items: start;
+}
+
+/* Past meetings */
+.logHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  min-height: 38px;
+}
+
+.logHead h2,
+.waitingHead h2 {
+  font-size: var(--t-21);
+  font-weight: 680;
+  letter-spacing: -0.005em;
+}
+
+.logSheet {
+  --trace-w: clamp(220px, 36%, 340px);
+  padding: 6px 0 10px;
+}
+
+.ruler,
+.row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) var(--trace-w);
+  column-gap: 20px;
+  padding-inline: 24px;
+}
+
+.ruler {
+  padding-top: 14px;
+  padding-bottom: 4px;
+  align-items: end;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.rulerLabel {
+  grid-column: 1 / 3;
+  justify-self: end;
+}
+
+.rulerTrack {
+  position: relative;
+  height: 22px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.tick {
+  position: absolute;
+  bottom: 0;
+  padding-bottom: 6px;
+  translate: -1px 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  border-left: 1px solid var(--rule);
+  padding-left: 5px;
+  line-height: 1;
+}
+
+/* The last tick sits at the track's end, so its label hangs to the left of it. */
+.tick:last-child {
+  translate: -100% 0;
+  border-left: 0;
+  border-right: 1px solid var(--rule);
+  padding-left: 0;
+  padding-right: 5px;
+}
+
+.day + .day {
+  margin-top: 4px;
+}
+
+.dayLabel {
+  padding: 22px 24px 8px;
+  font-size: var(--t-14);
+  font-weight: 650;
+  color: var(--ink-2);
+}
+
+.row {
+  position: relative;
+  align-items: start;
+  padding-top: 16px;
+  padding-bottom: 16px;
+  border-top: 1px solid var(--rule-2);
+  transition: background-color 120ms ease;
+}
+
+.row:hover {
+  background: var(--sheet-2);
+}
+
+.row:hover .rowLink {
+  text-decoration-color: currentColor;
+}
+
+.when {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 1px;
+}
+
+.time {
+  font-size: var(--t-16);
+  font-weight: 650;
+}
+
+.len {
+  font-size: var(--t-14);
+  color: var(--ink-3);
+}
+
+.what {
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--t-18);
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.rowLink {
+  text-decoration-color: transparent;
+}
+
+/* The whole row is the link's hit area. */
+.rowLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.rowLink:focus-visible {
+  outline: none;
+}
+
+.rowLink:focus-visible::after {
+  outline: 2px solid var(--ink);
+  outline-offset: -3px;
+  border-radius: 6px;
+}
+
+.summary {
+  margin-top: 5px;
+  font-size: var(--t-14);
+  line-height: 1.45;
+  color: var(--ink-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.trace {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  font-size: var(--t-14);
+}
+
+.spoke,
+.quiet,
+.forYou {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.quiet {
+  color: var(--ink-3);
+}
+
+.forYou {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.notIn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+
+.empty {
+  padding: 28px 24px;
+  color: var(--ink-2);
+}
+
+/* Waiting on you */
+.waitingHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  margin-bottom: 14px;
+}
+
+.waitingHead h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.waitingHead h2 svg {
+  color: var(--amber);
+}
+
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 15px;
+  background: var(--amber-wash);
+  font-size: var(--t-14);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.waitingIntro {
+  font-size: var(--t-14);
+  color: var(--ink-2);
+  padding-bottom: 6px;
+}
+
+.waitingEmpty {
+  padding: 16px 0;
+  color: var(--ink-2);
+}
+
+.waitList {
+  margin-top: 8px;
+}
+
+.waitItem {
+  padding: 18px 0 20px;
+  border-top: 1px solid var(--rule);
+}
+
+.due {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-14);
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+
+.overdue {
+  color: var(--amber);
+}
+
+.waitItem h3 {
+  font-size: var(--t-18);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.waitQuote {
+  margin-top: 10px;
+  font-size: var(--t-15);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.waitMeta {
+  margin-top: 10px;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+
+@media (max-width: 1080px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .waiting {
+    order: -1;
+    max-width: 44rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .logHead {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ruler {
+    display: none;
+  }
+
+  .row {
+    grid-template-columns: 56px minmax(0, 1fr);
+    padding-inline: 16px;
+    column-gap: 14px;
+  }
+
+  .trace {
+    grid-column: 2;
+    margin-top: 12px;
+  }
+
+  .dayLabel {
+    padding-inline: 16px;
+  }
+}
