@@ -34,7 +34,22 @@
   color: var(--ink-2);
 }
 
+a.status {
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+a.status:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .status :global(.lamp) {
+  box-shadow: 0 0 0 2px var(--paper);
+}
+
+.status :global(.lamp-off) {
   box-shadow: inset 0 0 0 1.5px var(--pencil);
 }
 

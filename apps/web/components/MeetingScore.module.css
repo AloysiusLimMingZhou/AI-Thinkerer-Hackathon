@@ -232,6 +232,10 @@
   gap: 7px;
 }
 
+.legendNote {
+  color: var(--ink-3);
+}
+
 .keyVoice,
 .keySpoke,
 .keyRing,

@@ -1,299 +1,269 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AgentPanel } from "@/components/AgentPanel";
+import { addNote, launchBot, leaveMeeting, sayInMeeting, tryLine, writeMinutes } from "@/app/actions";
+import { BackendDown } from "@/components/BackendDown";
+import { BotPanel } from "@/components/BotPanel";
 import { CopyButton } from "@/components/CopyButton";
 import { DownloadMenu, type DownloadOption } from "@/components/DownloadMenu";
-import { Icon, SourceIcon } from "@/components/Icon";
+import { Icon } from "@/components/Icon";
+import { LiveRefresh } from "@/components/LiveRefresh";
+import { ActivityPanel, AnswersPanel, BriefingPanel, MinutesPanel } from "@/components/MeetingPanels";
 import { MeetingRecord } from "@/components/MeetingRecord";
-import { MeetingScore, type ScoreData } from "@/components/MeetingScore";
-import { SummaryPanel } from "@/components/SummaryPanel";
+import { MeetingScore } from "@/components/MeetingScore";
 import { TranscriptPanel, type TranscriptLine } from "@/components/TranscriptPanel";
-import { gateTally, getMeeting, lengthSeconds, listMeetings, neighbours, onAirSeconds, speakerName, speakers, spokenTurns, utterance } from "@/lib/data";
-import { exportFilename, minutesMarkdown, TRANSCRIPT_FORMATS, type TranscriptFormat } from "@/lib/export";
-import { clock, duration, durationLong, longDay, plural, shortDay } from "@/lib/format";
-import { AGENT_NAME, initials, person, shortName } from "@/lib/people";
-import { AGENT, type Meeting } from "@/lib/types";
+import type { BackendEvent, Bot, Minutes, Session, TranscriptEntry } from "@/lib/api-types";
+import { backend } from "@/lib/backend";
+import { exportFilename, TRANSCRIPT_FORMATS, type TranscriptFormat } from "@/lib/export";
+import { ago, clock, longDay, shortDay } from "@/lib/format";
+import {
+  activityFrom,
+  answersFrom,
+  botState,
+  briefingFrom,
+  inCall,
+  isFinal,
+  isLive,
+  manualPlaybacks,
+  mergedTranscript,
+  platformOf,
+  reasonText,
+  silencesFrom,
+} from "@/lib/meeting";
+import { scoreData, timeline } from "@/lib/score";
 import { isView } from "@/lib/views";
 import styles from "./meeting.module.css";
 
-type Params = { params: Promise<{ id: string }>; searchParams: Promise<{ view?: string }> };
+export const dynamic = "force-dynamic";
 
-export function generateStaticParams() {
-  return listMeetings().map((m) => ({ id: m.id }));
-}
+type Params = { params: Promise<{ id: string }>; searchParams: Promise<{ view?: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params;
-  const m = getMeeting(id);
-  return { title: m ? `${m.title}, ${shortDay(m.start)}` : "Meeting not found" };
+  const session = await backend.getSession(id).catch(() => null);
+  return { title: session ? `${session.title}, ${shortDay(session.created_at)}` : "Meeting" };
 }
 
-const SOURCE_NOTES = {
-  scribe: "Transcribed from the recording by ElevenLabs Scribe. Speaker names are matched to Meet’s live captions.",
-  captions: "From Meet’s live captions. The recording is still being transcribed, so some words may change.",
-  none: "",
-} as const;
-
-function tickStep(length: number): number {
-  if (length <= 6 * 60) return 60;
-  if (length <= 16 * 60) return 120;
-  if (length <= 40 * 60) return 300;
-  return 600;
+interface Loaded {
+  session: Session;
+  bot: Bot | null;
+  transcript: TranscriptEntry[];
+  events: BackendEvent[];
+  minutes: Minutes | null;
 }
 
-function scoreData(m: Meeting): ScoreData {
-  const len = lengthSeconds(m);
-  const step = tickStep(len);
-  const ticks = Array.from({ length: Math.floor(len / step) + 1 }, (_, i) => ({ t: i * step, label: clock(m.start, i * step) }));
-  const turnsByUtterance = new Map(m.turns.map((t) => [t.utteranceId, t]));
-  const tally = gateTally(m);
-  const spoken = spokenTurns(m);
-
-  const onAir = onAirSeconds(m);
-  const onAirText = onAir < 60 ? `${Math.round(onAir)} seconds` : durationLong(onAir);
-  const summary =
-    spoken.length > 0
-      ? `${AGENT_NAME} spoke ${plural(spoken.length, "time")}, ${onAirText} in all, and stayed quiet through the other ${tally.quiet} turns.`
-      : `${AGENT_NAME} stayed quiet through all ${tally.heard} turns. Nobody asked it anything.`;
-
-  return {
-    start: m.start,
-    length: len,
-    ticks,
-    tickStep: step,
-    lanes: speakers(m).map((s) => ({ id: s.person.id, name: s.person.name, short: shortName(s.person), talk: duration(s.seconds) })),
-    voices: m.utterances
-      .filter((u) => u.speaker !== AGENT && u.channel === "voice")
-      .map((u) => ({ id: u.id, lane: u.speaker, t: u.t, dur: u.dur, clock: clock(m.start, u.t), text: u.text })),
-    spoke: m.utterances
-      .filter((u) => u.speaker === AGENT && u.channel === "voice")
-      .map((u) => {
-        const turn = turnsByUtterance.get(u.id);
-        const q = utterance(m, turn?.trigger);
-        const asker = q ? person(q.speaker) : undefined;
-        const heading = !asker
-          ? `${AGENT_NAME} spoke`
-          : turn?.kind === "defer"
-            ? `${AGENT_NAME} passed ${shortName(asker)}’s question to you`
-            : `${AGENT_NAME} answered ${asker.name}`;
-        return { id: u.id, turnId: turn?.id ?? "", t: u.t, dur: u.dur, clock: clock(m.start, u.t), text: u.text, heading };
-      }),
-    heldBack: m.notableSilences.flatMap((s) => {
-      const u = utterance(m, s.utteranceId);
-      return u ? [{ id: u.id, t: u.t, clock: clock(m.start, u.t), text: u.text, heading: `${speakerName(u.speaker)}. ${AGENT_NAME} held back`, note: s.note }] : [];
-    }),
-    chat: m.utterances
-      .filter((u) => u.speaker === AGENT && u.channel === "chat")
-      .map((u) => ({ id: u.id, turnId: turnsByUtterance.get(u.id)?.id ?? "", t: u.t, clock: clock(m.start, u.t), text: u.text })),
-    agentName: AGENT_NAME,
-    summary,
-  };
-}
-
-function transcriptLines(m: Meeting): TranscriptLine[] {
-  const triggers = new Set(m.turns.map((t) => t.trigger).filter(Boolean));
-  const held = new Map(m.notableSilences.map((s) => [s.utteranceId, s.note]));
-  return m.utterances.map((u) => ({
-    id: u.id,
-    clock: clock(m.start, u.t, true),
-    speaker: speakerName(u.speaker),
-    agent: u.speaker === AGENT,
-    chat: u.channel === "chat",
-    text: u.text,
-    role: triggers.has(u.id) ? "question" : held.has(u.id) ? "heldBack" : undefined,
-    note: held.get(u.id),
-  }));
-}
-
-function downloads(m: Meeting): { options: DownloadOption[]; minutes: DownloadOption } {
-  const options = (Object.keys(TRANSCRIPT_FORMATS) as TranscriptFormat[]).map((f) => ({
-    label: TRANSCRIPT_FORMATS[f].label,
-    hint: `.${TRANSCRIPT_FORMATS[f].ext}`,
-    href: `/meetings/${m.id}/transcript?format=${f}`,
-    filename: exportFilename(m, "transcript", TRANSCRIPT_FORMATS[f].ext),
-  }));
-  return {
-    options,
-    minutes: { label: "Minutes", hint: ".md", href: `/meetings/${m.id}/minutes`, filename: exportFilename(m, "minutes", "md") },
-  };
+async function load(id: string): Promise<Loaded | null> {
+  const session = await backend.getSession(id);
+  if (!session) return null;
+  const [bot, transcript, events, minutes] = await Promise.all([backend.bot(id), backend.transcript(id), backend.events(id), backend.minutes(id)]);
+  return { session, bot, transcript, events, minutes };
 }
 
 export default async function MeetingPage({ params, searchParams }: Params) {
   const { id } = await params;
   const { view } = await searchParams;
-  const m = getMeeting(id);
-  if (!m) notFound();
 
-  const { earlier, later } = neighbours(m.id);
-  const host = person(m.host);
-  const others = m.attendees.length - 1;
-  const attended = m.status === "attended";
-  const dl = downloads(m);
+  let data: Loaded | null;
+  try {
+    data = await load(id);
+  } catch (e) {
+    return <BackendDown error={e} />;
+  }
+  if (!data) notFound();
+
+  const { session, bot, transcript, events, minutes } = data;
+  const agent = session.agent_name;
+  const answers = answersFrom(events);
+  const silences = silencesFrom(events);
+  const notes = briefingFrom(events);
+  const lines = mergedTranscript(transcript, answers, agent);
+  const tl = timeline(transcript, answers, silences);
+  const live = isLive(session, bot);
+  const platform = platformOf(session.meeting_url);
+  const when = bot?.join_at ? `${clock(bot.join_at)} on ${shortDay(bot.join_at)}` : undefined;
+  const state = botState(bot, agent, when);
+  const stateLabel = (code: string) => botState(bot ? { ...bot, state: code } : null, agent).label;
+  const finishedTranscript = events.some((e) => e.type === "transcript.saved");
+
+  // Mark, in the transcript, which lines got an answer and which named it without asking.
+  const questionIds = new Set(answers.map((a) => a.question?.id).filter(Boolean).map((qid) => `t-${qid}`));
+  const heldBack = new Map(
+    silences.filter((s) => s.reason === "addressed, but no response was requested" && s.utteranceId).map((s) => [`t-${s.utteranceId}`, reasonText(s.reason, agent)]),
+  );
+  const transcriptLines: TranscriptLine[] = lines.map((l) => ({
+    id: l.id,
+    clock: clock(l.at, true),
+    speaker: l.speaker,
+    agent: l.agent,
+    chat: false,
+    text: l.text,
+    role: questionIds.has(l.id) ? "question" : heldBack.has(l.id) ? "heldBack" : undefined,
+    note: heldBack.get(l.id),
+  }));
+
+  const downloads: DownloadOption[] = (Object.keys(TRANSCRIPT_FORMATS) as TranscriptFormat[]).map((f) => ({
+    label: TRANSCRIPT_FORMATS[f].label,
+    hint: `.${TRANSCRIPT_FORMATS[f].ext}`,
+    href: `/meetings/${session.id}/transcript?format=${f}`,
+    filename: exportFilename(session, "transcript", TRANSCRIPT_FORMATS[f].ext),
+  }));
+  const minutesDownload: DownloadOption | undefined = minutes
+    ? { label: "Minutes", hint: ".md", href: `/meetings/${session.id}/minutes`, filename: exportFilename(session, "minutes", "md") }
+    : undefined;
+
+  const sourceNote = finishedTranscript
+    ? `Recall’s final transcript, saved after the call. ${agent}’s answers are merged in from its answer log.`
+    : bot
+      ? `Live captions from Recall as they arrive. After the call they’re replaced by Recall’s final transcript. ${agent}’s answers are merged in.`
+      : `Lines tried from this dashboard. ${agent}’s answers are merged in.`;
+
+  const initialView = isView(view) ? view : minutes ? "summary" : lines.length > 0 ? "said" : "briefing";
 
   return (
     <main className={styles.page}>
+      {live && <LiveRefresh every={3000} />}
       <nav className={styles.crumbs} aria-label="Meetings">
         <Link href="/" className={styles.back}>
           <Icon name="chevronLeft" size={16} /> All meetings
         </Link>
-        <div className={styles.step}>
-          {earlier ? (
-            <Link href={`/meetings/${earlier.id}`} title={earlier.title}>
-              <Icon name="chevronLeft" size={16} /> Earlier
-            </Link>
-          ) : (
-            <span aria-disabled="true">
-              <Icon name="chevronLeft" size={16} /> Earlier
-            </span>
-          )}
-          {later ? (
-            <Link href={`/meetings/${later.id}`} title={later.title}>
-              Later <Icon name="chevronRight" size={16} />
-            </Link>
-          ) : (
-            <span aria-disabled="true">
-              Later <Icon name="chevronRight" size={16} />
-            </span>
-          )}
-        </div>
+        {live && <span className={styles.liveTag}>Updating live</span>}
       </nav>
 
       <header className={styles.header}>
         <div className={styles.heading}>
-          <h1 className="condensed">{m.title}</h1>
+          <h1 className="condensed">{session.title}</h1>
           <p className={styles.meta}>
-            {longDay(m.start)}, {attended ? `${clock(m.start)}–${clock(m.end)}` : `scheduled for ${clock(m.start)}`} on {m.platform}. Hosted by {host.name}
-            {others > 0 && `, with ${m.audienceSize ? `${m.audienceSize - 1} others` : plural(others, "other")}`}.
+            Created {longDay(session.created_at)} at {clock(session.created_at)}.{" "}
+            {platform && session.meeting_url && (
+              <>
+                <a href={session.meeting_url} target="_blank" rel="noreferrer">
+                  {platform.name} link
+                </a>
+                .{" "}
+              </>
+            )}
+            {agent} is attending for {session.owner_name}.
           </p>
         </div>
-        {attended && (
-          <div className={styles.actions}>
-            <CopyButton text={minutesMarkdown(m)} label="Copy minutes" done="Minutes copied" />
-            <DownloadMenu options={dl.options} extra={dl.minutes} />
-          </div>
-        )}
+        <div className={styles.actions}>
+          {minutes && <CopyButton text={minutes.content} label="Copy minutes" done="Minutes copied" />}
+          {lines.length > 0 && <DownloadMenu options={downloads} extra={minutesDownload} />}
+        </div>
       </header>
 
       <div className={styles.layout}>
         <div className={`sheet ${styles.record}`}>
-          {attended ? (
-            <MeetingRecord
-              initialView={isView(view) ? view : "summary"}
-              labels={{
-                summary: { label: "Summary" },
-                said: { label: `What ${AGENT_NAME} said`, count: spokenTurns(m).length },
-                transcript: { label: "Transcript" },
-              }}
-              score={<MeetingScore key="score" data={scoreData(m)} />}
-              panels={{
-                summary: <SummaryPanel key="summary" meeting={m} />,
-                said: <AgentPanel key="said" meeting={m} />,
-                transcript: (
-                  <TranscriptPanel
-                    key="transcript"
-                    lines={transcriptLines(m)}
-                    source={SOURCE_NOTES[m.transcriptSource]}
-                    agentName={AGENT_NAME}
-                    download={<DownloadMenu key="download" options={dl.options} variant="quiet" />}
-                  />
-                ),
-              }}
-            />
-          ) : (
-            <NotAdmitted meeting={m} />
-          )}
+          <BotPanel
+            agent={agent}
+            owner={session.owner_name}
+            label={state.label}
+            detail={state.detail}
+            tone={state.tone}
+            stateCode={bot?.state}
+            since={bot?.last_status_at ? ago(bot.last_status_at) : undefined}
+            hasBot={!!bot}
+            canLeave={!!bot && !isFinal(bot)}
+            canSay={inCall(bot)}
+            launch={launchBot.bind(null, session.id)}
+            leave={leaveMeeting.bind(null, session.id)}
+            say={sayInMeeting.bind(null, session.id)}
+          />
+          <MeetingRecord
+            initialView={initialView}
+            labels={{
+              summary: { label: "Summary" },
+              said: { label: `What ${agent} said`, count: answers.length },
+              transcript: { label: "Transcript", count: lines.length },
+              briefing: { label: "Briefing", count: notes.length },
+              activity: { label: "Activity" },
+            }}
+            score={tl ? <MeetingScore key="score" data={scoreData(tl, agent)} /> : null}
+            panels={{
+              summary: <MinutesPanel key="summary" minutes={minutes} agent={agent} hasTranscript={transcript.length > 0} write={writeMinutes.bind(null, session.id)} />,
+              said: <AnswersPanel key="said" answers={answers} silences={silences} playbacks={manualPlaybacks(events)} agent={agent} />,
+              transcript: (
+                <TranscriptPanel
+                  key="transcript"
+                  lines={transcriptLines}
+                  source={sourceNote}
+                  agentName={agent}
+                  download={lines.length > 0 ? <DownloadMenu options={downloads} variant="quiet" /> : null}
+                />
+              ),
+              briefing: <BriefingPanel key="briefing" notes={notes} agent={agent} add={addNote.bind(null, session.id)} />,
+              activity: <ActivityPanel key="activity" items={activityFrom(events, agent, stateLabel)} agent={agent} rehearse={tryLine.bind(null, session.id)} />,
+            }}
+          />
         </div>
 
         <aside className={styles.aside}>
-          {attended && m.agentJoinedAt !== undefined && m.agentLeftAt !== undefined && (
-            <section aria-labelledby="visit-title">
-              <h2 id="visit-title">{AGENT_NAME}’s visit</h2>
-              <dl className={styles.visit}>
-                <div>
-                  <dt>Joined</dt>
-                  <dd className="tabular">{clock(m.start, m.agentJoinedAt)}</dd>
-                </div>
-                <div>
-                  <dt>Left</dt>
-                  <dd className="tabular">{clock(m.start, m.agentLeftAt)}</dd>
-                </div>
-                <div>
-                  <dt>On air</dt>
-                  <dd>{onAirSeconds(m) > 0 ? duration(onAirSeconds(m)) : "Never"}</dd>
-                </div>
-              </dl>
+          <section aria-labelledby="delegate-title">
+            <h2 id="delegate-title">The delegate</h2>
+            <dl className={styles.facts}>
+              <div>
+                <dt>Joins as</dt>
+                <dd>{agent} (AI delegate)</dd>
+              </div>
+              <div>
+                <dt>Attending for</dt>
+                <dd>{session.owner_name}</dd>
+              </div>
+              <div>
+                <dt>Wakes when someone says</dt>
+                <dd className="verbatim">“{agent}, …?”</dd>
+              </div>
+            </dl>
+          </section>
+
+          {session.meeting_url && (
+            <section aria-labelledby="link-title">
+              <h2 id="link-title">Meeting link</h2>
+              <p className={styles.link}>
+                <a href={session.meeting_url} target="_blank" rel="noreferrer">
+                  {session.meeting_url}
+                </a>
+              </p>
             </section>
           )}
 
-          <section aria-labelledby="people-title">
-            <h2 id="people-title">{attended ? "People" : "On the invite"}</h2>
-            <ul className={styles.people}>
-              {m.attendees.map((pid) => {
-                const p = person(pid);
-                return (
-                  <li key={pid}>
-                    <span className={styles.avatar} aria-hidden="true">
-                      {initials(p.name)}
-                    </span>
-                    <span className={styles.personText}>
-                      <span className={styles.personName}>
-                        {p.name}
-                        {pid === m.host && <span className={styles.tag}>Host</span>}
-                      </span>
-                      <span className={styles.role}>
-                        {p.role}
-                        {p.org && `, ${p.org}`}
-                      </span>
-                    </span>
-                  </li>
-                );
-              })}
-              {m.audienceSize && m.audienceSize > m.attendees.length && (
-                <li className={styles.more}>and {m.audienceSize - m.attendees.length} more listening</li>
-              )}
-            </ul>
-          </section>
+          {bot && (
+            <section aria-labelledby="bot-title">
+              <h2 id="bot-title">Recall bot</h2>
+              <dl className={styles.facts}>
+                <div>
+                  <dt>State</dt>
+                  <dd className="verbatim">{bot.state}</dd>
+                </div>
+                {bot.join_at && (
+                  <div>
+                    <dt>Join time</dt>
+                    <dd>
+                      {clock(bot.join_at)} on {shortDay(bot.join_at)}
+                    </dd>
+                  </div>
+                )}
+                {bot.last_status_at && (
+                  <div>
+                    <dt>Last update</dt>
+                    <dd>{ago(bot.last_status_at)}</dd>
+                  </div>
+                )}
+                {bot.bot_id && (
+                  <div>
+                    <dt>Bot ID</dt>
+                    <dd className={`verbatim ${styles.id}`}>{bot.bot_id}</dd>
+                  </div>
+                )}
+              </dl>
+              {bot.error && <p className={styles.error}>{bot.error}</p>}
+            </section>
+          )}
 
-          <section aria-labelledby="context-title">
-            <h2 id="context-title">What it read beforehand</h2>
-            <p className={styles.asideNote}>{AGENT_NAME} answers from these, and says when it can’t.</p>
-            <ul className={styles.context}>
-              {m.context.map((c) => (
-                <li key={c.label}>
-                  <span className={styles.contextIcon}>
-                    <SourceIcon kind={c.kind} size={15} />
-                  </span>
-                  <span>
-                    <span className={styles.contextLabel}>{c.label}</span>
-                    <span className={styles.contextDetail}>{c.detail}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <p className={styles.asideNote}>
+            A meeting supports one launch. To send {agent} again, even to the same link, <Link href="/">start a new meeting</Link>.
+          </p>
         </aside>
       </div>
     </main>
-  );
-}
-
-function NotAdmitted({ meeting: m }: { meeting: Meeting }) {
-  const host = person(m.host);
-  return (
-    <div className={styles.notIn}>
-      <span className={styles.notInIcon}>
-        <Icon name="door" size={28} />
-      </span>
-      <h2>{AGENT_NAME} didn’t get in</h2>
-      <p>
-        It asked to join at {clock(m.start)} and waited {durationLong(m.lobbyWait ?? 0)} in the waiting room, but nobody admitted it. It left at {clock(m.end)}, so there’s no
-        recording, transcript or minutes from this meeting.
-      </p>
-      <p>
-        Google Meet asks the host to let guests in. If you need to know what happened, ask {host.name} or {m.attendees.length > 1 ? "another attendee" : "the host"} for their
-        notes.
-      </p>
-    </div>
   );
 }
