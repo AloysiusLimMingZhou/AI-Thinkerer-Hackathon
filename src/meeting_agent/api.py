@@ -1,0 +1,250 @@
+from __future__ import annotations
+
+import asyncio
+
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+
+from .config import Settings
+from .models import (
+    AgentDecision,
+    ContextBatch,
+    ContextNoteView,
+    HealthView,
+    MinutesView,
+    SessionCreate,
+    SessionView,
+    SpeakRequest,
+    TranscriptEntry,
+    UtteranceCreate,
+)
+from .repository import SQLiteRepository
+from .services import (
+    Brain,
+    ElevenLabsVoice,
+    IntegrationUnavailable,
+    OpenAIBrain,
+    Voice,
+    citations_for,
+    retrieve_context,
+    should_answer,
+)
+
+
+def create_app(
+    *,
+    settings: Settings | None = None,
+    repository: SQLiteRepository | None = None,
+    brain: Brain | None = None,
+    voice: Voice | None = None,
+) -> FastAPI:
+    settings = settings or Settings.from_env()
+    repository = repository or SQLiteRepository(settings.database_path)
+    brain = brain or OpenAIBrain(settings)
+    voice = voice or ElevenLabsVoice(settings)
+
+    app = FastAPI(
+        title="Meeting Agent API",
+        version="0.1.0",
+        description="Context-aware meeting delegate backend.",
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.cors_origins),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    def require_session(session_id: str) -> SessionView:
+        session = repository.get_session(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return session
+
+    @app.get("/health", response_model=HealthView, tags=["system"])
+    async def health() -> HealthView:
+        return HealthView(
+            openai_configured=bool(settings.openai_api_key),
+            elevenlabs_configured=bool(settings.elevenlabs_api_key),
+        )
+
+    @app.post(
+        "/sessions", response_model=SessionView, status_code=201, tags=["sessions"]
+    )
+    async def create_session(payload: SessionCreate) -> SessionView:
+        session = repository.create_session(payload)
+        repository.record_event(
+            session.id, "session.created", session.model_dump(mode="json")
+        )
+        return session
+
+    @app.get("/sessions", response_model=list[SessionView], tags=["sessions"])
+    async def list_sessions() -> list[SessionView]:
+        return repository.list_sessions()
+
+    @app.get("/sessions/{session_id}", response_model=SessionView, tags=["sessions"])
+    async def get_session(session_id: str) -> SessionView:
+        return require_session(session_id)
+
+    @app.post(
+        "/sessions/{session_id}/context",
+        response_model=list[ContextNoteView],
+        status_code=201,
+        tags=["context"],
+    )
+    async def add_context(
+        session_id: str, payload: ContextBatch
+    ) -> list[ContextNoteView]:
+        require_session(session_id)
+        notes = repository.add_context(session_id, payload.notes)
+        repository.record_event(
+            session_id,
+            "context.added",
+            {"notes": [note.model_dump(mode="json") for note in notes]},
+        )
+        return notes
+
+    @app.get(
+        "/sessions/{session_id}/transcript",
+        response_model=list[TranscriptEntry],
+        tags=["meeting"],
+    )
+    async def transcript(session_id: str) -> list[TranscriptEntry]:
+        require_session(session_id)
+        return repository.get_transcript(session_id)
+
+    @app.post(
+        "/sessions/{session_id}/utterances",
+        response_model=AgentDecision,
+        tags=["meeting"],
+    )
+    async def ingest_utterance(
+        session_id: str, payload: UtteranceCreate
+    ) -> AgentDecision:
+        session = require_session(session_id)
+        entry = repository.add_transcript(session_id, payload)
+        repository.record_event(
+            session_id, "transcript.utterance", entry.model_dump(mode="json")
+        )
+
+        if not payload.is_final and not payload.force_answer:
+            decision = AgentDecision(
+                action="stay_silent", reason="waiting for final caption"
+            )
+        else:
+            approved, reason = should_answer(
+                payload.text,
+                agent_name=session.agent_name,
+                owner_name=session.owner_name,
+                force_answer=payload.force_answer,
+            )
+            if not approved:
+                decision = AgentDecision(action="stay_silent", reason=reason)
+            else:
+                selected_context = retrieve_context(
+                    payload.text, repository.get_context(session_id)
+                )
+                try:
+                    answer = await brain.answer(
+                        session,
+                        payload.text,
+                        repository.get_transcript(session_id),
+                        selected_context,
+                    )
+                except IntegrationUnavailable as exc:
+                    raise HTTPException(status_code=503, detail=str(exc)) from exc
+                citations = citations_for(selected_context)
+                repository.add_qa(session_id, payload.text, answer, citations)
+                decision = AgentDecision(
+                    action="answer",
+                    reason=reason,
+                    answer=answer,
+                    citations=citations,
+                )
+
+        repository.record_event(
+            session_id, "agent.decision", decision.model_dump(mode="json")
+        )
+        return decision
+
+    @app.post("/sessions/{session_id}/speak", tags=["voice"])
+    async def speak(session_id: str, payload: SpeakRequest) -> Response:
+        require_session(session_id)
+        try:
+            audio = await voice.generate(payload.text)
+        except IntegrationUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        repository.record_event(session_id, "voice.generated", {"text": payload.text})
+        return Response(
+            content=audio,
+            media_type="audio/mpeg",
+            headers={"Content-Disposition": 'inline; filename="speech.mp3"'},
+        )
+
+    @app.post(
+        "/sessions/{session_id}/minutes",
+        response_model=MinutesView,
+        tags=["minutes"],
+    )
+    async def generate_minutes(session_id: str) -> MinutesView:
+        session = require_session(session_id)
+        transcript_entries = repository.get_transcript(session_id)
+        if not transcript_entries:
+            raise HTTPException(status_code=409, detail="Cannot generate empty minutes")
+        try:
+            content = await brain.generate_minutes(
+                session,
+                transcript_entries,
+                repository.get_context(session_id),
+                repository.get_qa_log(session_id),
+            )
+        except IntegrationUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        minutes = repository.save_minutes(session_id, content)
+        repository.record_event(
+            session_id, "minutes.generated", minutes.model_dump(mode="json")
+        )
+        return minutes
+
+    @app.get(
+        "/sessions/{session_id}/minutes",
+        response_model=MinutesView,
+        tags=["minutes"],
+    )
+    async def get_minutes(session_id: str) -> MinutesView:
+        require_session(session_id)
+        minutes = repository.get_minutes(session_id)
+        if minutes is None:
+            raise HTTPException(status_code=404, detail="Minutes not generated")
+        return minutes
+
+    @app.get("/sessions/{session_id}/events", tags=["events"])
+    async def get_events(
+        session_id: str, after: int = Query(default=0, ge=0)
+    ) -> list[dict[str, object]]:
+        require_session(session_id)
+        return repository.get_events(session_id, after)
+
+    @app.websocket("/sessions/{session_id}/stream")
+    async def event_stream(websocket: WebSocket, session_id: str) -> None:
+        if repository.get_session(session_id) is None:
+            await websocket.close(code=4404, reason="Session not found")
+            return
+        await websocket.accept()
+        sequence = 0
+        try:
+            while True:
+                events = repository.get_events(session_id, sequence)
+                for event in events:
+                    await websocket.send_json(event)
+                    sequence = int(event["sequence"])
+                await asyncio.sleep(0.25)
+        except WebSocketDisconnect:
+            return
+
+    return app
+
+
+app = create_app()

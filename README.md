@@ -6,15 +6,41 @@
 history (Slack, the calendar invite, attached Drive docs), listens, **speaks only when somebody
 actually asks it something**, and afterwards writes up proper meeting minutes.
 
+## Backend quick start
+
+The first backend slice is available as a FastAPI service. It stores meeting sessions, notes,
+transcripts, gate decisions, answers, and minutes in SQLite; uses OpenAI's Responses API for the
+meeting brain; and returns ElevenLabs speech as MP3.
+
+```bash
+cp .env.example .env
+# Add OPENAI_API_KEY and ELEVENLABS_API_KEY to .env
+uv sync
+uv run python main.py
+```
+
+Open [http://localhost:8000/docs](http://localhost:8000/docs) for the interactive API. A minimal
+demo flow is:
+
+1. `POST /sessions` with a title, owner name, and wake name.
+2. `POST /sessions/{id}/context` with notes from earlier meetings or project docs.
+3. `POST /sessions/{id}/utterances` as captions arrive. The agent answers only final captions that
+   address its wake name and request a response; `force_answer` is the manual override.
+4. `POST /sessions/{id}/speak` to turn an answer into ElevenLabs MP3.
+5. `POST /sessions/{id}/minutes` when the meeting ends.
+
+Events are available over `GET /sessions/{id}/events` and WebSocket
+`/sessions/{id}/stream`. Credentials are read only from the environment and `.env` is ignored.
+
 ---
 
 ## Status
 
 | | |
 |---|---|
-| ✅ Working | ElevenLabs TTS hello-world (`main.py`), the shared contract (`types.py`, `protocols.py`), the caption aggregator, the speaking gate, BM25 retrieval |
-| 🔨 In progress | The offline simulator, orchestrator and CLI — milestone **M1** |
-| 📋 Not started | Everything behind a real integration: the Meet bot, the Claude brain, Slack/Calendar/Drive connectors, Scribe, minutes, the UI |
+| ✅ Working | FastAPI + SQLite backend, note retrieval, silent-by-default gate, OpenAI answer/minutes providers, ElevenLabs TTS provider, event stream, offline tests |
+| 🔨 In progress | Meeting-platform adapter, caption aggregation, context connectors, and demo UI |
+| 📋 Not started | Production Google Meet bot, Slack/Calendar/Drive OAuth, and ElevenLabs Scribe ingestion |
 
 Commands below marked *(planned)* do not run yet.
 
@@ -39,11 +65,11 @@ Commands below marked *(planned)* do not run yet.
 meeting audio ──► PulseAudio monitor ──► WAV recording ──────────────┐
                                                                      │
 Meet DOM captions ──► UtteranceAggregator ──► Gate ──► Brain ────────┤
-  (speaker-labelled)   (group until pause)   (3 stages) (Claude+RAG) │
+  (speaker-labelled)   (group until pause)   (3 stages) (OpenAI+RAG) │
 Meet DOM chat ───────────────────────────────────┘         │         │
                                                            ▼         ▼
 Slack + Calendar + Drive ──► ContextPack ──► BM25 index   ElevenLabs  Minutes
-                                                           TTS        (Claude)
+                                                           TTS        (OpenAI)
                                                             │          │
                                                      virtual mic    Markdown/HTML
                                                        (speak)      + Slack post
@@ -66,7 +92,7 @@ Three stages, cheap ones first:
 |---|---|---|
 | 1. Addressed? | free, local | Fuzzy wake-name match (`"hey aloy bot"`, `"aloy-bot"`, `"ai notetaker"`) |
 | 2. Response expected? | free, local | Interrogatives (wh-word, aux-inversion, trailing `?`), imperatives aimed at the bot (*"tell us the status"*), hand-offs (*"…, over to you"*) |
-| 3. Confirm | Claude Haiku | Only runs if stage 1 or a strong stage-2 signal fired. Classifies over the last ~8 turns |
+| 3. Confirm | OpenAI | Only runs if stage 1 or a strong stage-2 signal fired. Classifies over the last ~8 turns |
 
 On top of that: a cooldown, a cap on consecutive answers, never start speaking while a human is
 talking, and **ignore its own voice** (its TTS goes into the meeting, so Meet captions it back —
@@ -78,7 +104,7 @@ showing **why the bot stayed quiet** is the most convincing thing in the demo.
 ### 2. Why not ElevenLabs Agents (convai) for the voice loop
 
 convai does its own turn-taking and answers whatever it hears — which fights the gate — and its VAD
-is unreliable on mixed multi-speaker meeting audio anyway. So: **Claude** reasons (full control over
+is unreliable on mixed multi-speaker meeting audio anyway. So: **OpenAI** reasons (full control over
 citations and defer behaviour), **ElevenLabs** does the voice. It sits behind a `Responder` protocol
 so a `ConvaiResponder` can be dropped in later without touching the pipeline.
 
@@ -88,13 +114,11 @@ so a `ConvaiResponder` can be dropped in later without touching the pipeline.
 - **After:** the recorded WAV through **ElevenLabs Scribe** with diarisation — accurate, punctuated,
   and what the minutes are actually built from.
 
-So ElevenLabs does both STT (batch) and TTS (realtime); Claude is the brain.
+So ElevenLabs does both STT (batch) and TTS (realtime); OpenAI is the brain.
 
-### 4. Offline-first, because the build sandbox is air-gapped
+### 4. Offline-first, because demos need a fallback
 
-The Claude Code sandbox blocks every third-party API — `api.elevenlabs.io`, `api.slack.com`,
-`graph.microsoft.com` and `meet.google.com` all 403 at the egress proxy. Only npm, PyPI and the
-Anthropic API are reachable.
+Third-party APIs, OAuth sessions, meeting DOM selectors, and venue Wi-Fi can all fail at demo time.
 
 So the **simulator is a first-class part of the app, not a test fixture**. Every external dependency
 sits behind a protocol with a working offline implementation. Consequences:
@@ -122,7 +146,7 @@ src/meeting_agent/
   agent/
     aggregator.py   caption fragments → finalised utterances       [Track B]
     gate.py         the speaking gate                              [Track B]
-    brain.py        Claude responder + citations                   [Track B]
+    brain.py        OpenAI responder + citations                   [Track B]
     session.py      orchestrator                                   [Track B]
   context/
     slack.py calendar.py drive.py    connectors                    [Track C]
@@ -225,7 +249,7 @@ that eats a day if it goes wrong, so it goes first.
 - **`gate.py`** — the three stages in the table above, plus cooldown, consecutive-answer cap,
   don't-talk-over-humans, and the ignore-own-voice guard. Emits a decision + reason for *every*
   utterance, silent ones included.
-- **`brain.py`** — Claude Sonnet, given the briefing, a rolling transcript window, and a
+- **`brain.py`** — OpenAI Responses API, given the briefing, a rolling transcript window, and a
   `search_context` tool over Track C's index. Returns
   `{action: answer|defer|stay_silent, text, citations[], confidence}`. Answers capped at ~2
   sentences — a bot that monologues in a standup is a bad bot. Speaks **as your assistant, never as
@@ -277,7 +301,7 @@ are the slow, bureaucratic part.
   to own: **target under 2.5 s** from finalised caption.
 - **`scribe.py`** — ElevenLabs Scribe over the recorded WAV with diarisation, reconciled against the
   caption timeline to recover real speaker names.
-- **`minutes/`** — Claude Opus turns transcript + context + QA log into structured minutes:
+- **`minutes/`** — OpenAI turns transcript + context + QA log into structured minutes:
   attendees, agenda, discussion by topic, decisions, action items (owner / due / source quote), open
   questions, and an appendix of every question the bot answered with citations. Render Markdown +
   HTML; deliver to file, to Slack, and to the UI.
@@ -308,7 +332,7 @@ Four people only converge if there are forced convergence points.
 |---|---|---|
 | **M0** | Shared contract + offline stubs merged; `pytest` green | everyone, hour one |
 | **M1** | Scripted meeting runs end to end offline, writes minutes, WAV instead of speech | B + C + D |
-| **M2** | Real ElevenLabs voice on the scripted meeting; real Claude brain | B + D |
+| **M2** | Real ElevenLabs voice on the scripted meeting; real OpenAI brain | B + D |
 | **M3** | Bot joins a real Meet call, captions flowing, `speak()` audible | A |
 | **M4** | **Full loop on a real call**: asked → answers → minutes | all four |
 | **M5** | UI on the projector, meeting history, latency HUD, demo script rehearsed | D + all |
