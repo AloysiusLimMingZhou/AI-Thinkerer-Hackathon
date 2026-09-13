@@ -7,12 +7,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from .config import Settings
+from .integrations import (
+    ContextImporter,
+    IntegrationError,
+    OAuthManager,
+    Requester,
+    provider_capabilities,
+)
 from .models import (
     AgentDecision,
+    CoachRequest,
+    CoachSuggestion,
     ContextBatch,
+    ContextImportRequest,
     ContextNoteView,
     HealthView,
+    IntegrationView,
     MinutesView,
+    OAuthStartView,
+    Provider,
+    ProviderCapabilityView,
     SessionCreate,
     SessionView,
     SpeakRequest,
@@ -38,11 +52,14 @@ def create_app(
     repository: SQLiteRepository | None = None,
     brain: Brain | None = None,
     voice: Voice | None = None,
+    provider_requester: Requester | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     repository = repository or SQLiteRepository(settings.database_path)
     brain = brain or OpenAIBrain(settings)
     voice = voice or ElevenLabsVoice(settings)
+    oauth = OAuthManager(settings, repository, provider_requester)
+    context_importer = ContextImporter(oauth)
 
     app = FastAPI(
         title="Meeting Agent API",
@@ -69,6 +86,62 @@ def create_app(
             openai_configured=bool(settings.openai_api_key),
             elevenlabs_configured=bool(settings.elevenlabs_api_key),
         )
+
+    @app.get(
+        "/platforms",
+        response_model=list[ProviderCapabilityView],
+        tags=["integrations"],
+    )
+    async def platforms() -> list[ProviderCapabilityView]:
+        return provider_capabilities()
+
+    @app.get(
+        "/integrations",
+        response_model=list[IntegrationView],
+        tags=["integrations"],
+    )
+    async def integrations() -> list[IntegrationView]:
+        return oauth.list_integrations()
+
+    @app.post(
+        "/integrations/{provider}/authorize",
+        response_model=OAuthStartView,
+        tags=["integrations"],
+    )
+    async def authorize(provider: Provider) -> OAuthStartView:
+        try:
+            return oauth.start(provider)
+        except IntegrationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get(
+        "/integrations/{provider}/callback",
+        response_model=IntegrationView,
+        tags=["integrations"],
+    )
+    async def oauth_callback(
+        provider: Provider,
+        code: str | None = None,
+        state: str | None = None,
+        error: str | None = None,
+    ) -> IntegrationView:
+        if error:
+            raise HTTPException(status_code=400, detail=f"OAuth denied: {error}")
+        if not code or not state:
+            raise HTTPException(status_code=400, detail="Missing OAuth code or state")
+        try:
+            return await oauth.callback(provider, code=code, state=state)
+        except IntegrationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete(
+        "/integrations/{provider}",
+        status_code=204,
+        tags=["integrations"],
+    )
+    async def disconnect(provider: Provider) -> Response:
+        oauth.repository.delete_integration(provider)
+        return Response(status_code=204)
 
     @app.post(
         "/sessions", response_model=SessionView, status_code=201, tags=["sessions"]
@@ -103,6 +176,32 @@ def create_app(
             session_id,
             "context.added",
             {"notes": [note.model_dump(mode="json") for note in notes]},
+        )
+        return notes
+
+    @app.post(
+        "/sessions/{session_id}/context/import",
+        response_model=list[ContextNoteView],
+        status_code=201,
+        tags=["context"],
+    )
+    async def import_context(
+        session_id: str, payload: ContextImportRequest
+    ) -> list[ContextNoteView]:
+        require_session(session_id)
+        try:
+            imported = await context_importer.import_context(payload)
+        except IntegrationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        notes = repository.add_context(session_id, [imported])
+        repository.record_event(
+            session_id,
+            "context.imported",
+            {
+                "provider": payload.provider,
+                "resource_type": payload.resource_type,
+                "notes": [note.model_dump(mode="json") for note in notes],
+            },
         )
         return notes
 
@@ -168,6 +267,41 @@ def create_app(
             session_id, "agent.decision", decision.model_dump(mode="json")
         )
         return decision
+
+    @app.post(
+        "/sessions/{session_id}/coach",
+        response_model=CoachSuggestion,
+        tags=["meeting"],
+    )
+    async def coach(session_id: str, payload: CoachRequest) -> CoachSuggestion:
+        session = require_session(session_id)
+        query = " ".join(
+            item for item in (payload.latest_message, payload.objective) if item
+        )
+        selected_context = retrieve_context(query, repository.get_context(session_id))
+        coaching_prompt = (
+            "Privately suggest exactly what the meeting owner should say next. "
+            f"Latest message: {payload.latest_message}"
+        )
+        if payload.objective:
+            coaching_prompt += f"\nOwner's objective: {payload.objective}"
+        try:
+            suggestion = await brain.answer(
+                session,
+                coaching_prompt,
+                repository.get_transcript(session_id),
+                selected_context,
+            )
+        except IntegrationUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        result = CoachSuggestion(
+            suggestion=suggestion,
+            citations=citations_for(selected_context),
+        )
+        repository.record_event(
+            session_id, "coach.suggestion", result.model_dump(mode="json")
+        )
+        return result
 
     @app.post("/sessions/{session_id}/speak", tags=["voice"])
     async def speak(session_id: str, payload: SpeakRequest) -> Response:

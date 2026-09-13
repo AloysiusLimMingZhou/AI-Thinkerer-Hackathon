@@ -32,6 +32,29 @@ demo flow is:
 Events are available over `GET /sessions/{id}/events` and WebSocket
 `/sessions/{id}/stream`. Credentials are read only from the environment and `.env` is ignored.
 
+### Connected accounts and private coaching
+
+The backend includes OAuth authorization-code flows for Google, Slack, Microsoft, and Zoom. OAuth
+tokens are encrypted before SQLite storage and are never returned by the API. Configure the client
+IDs, client secrets, callback URLs, and a 32+ character `OAUTH_ENCRYPTION_KEY` from `.env.example`,
+then use:
+
+- `GET /platforms` to inspect what each provider can currently do.
+- `POST /integrations/{provider}/authorize` to receive the provider consent URL.
+- `GET /integrations/{provider}/callback` as the registered OAuth callback.
+- `POST /sessions/{id}/context/import` to import a Slack channel, Google Calendar event or Meet
+  space, Microsoft calendar event or Teams chat, or Zoom meeting metadata.
+- `POST /sessions/{id}/coach` to privately suggest what the user should say next. Send that text to
+  `/sessions/{id}/speak` when voice-over is desired.
+
+Live meeting media is deliberately provider-specific. Google Meet Media API currently requires
+Developer Preview enrollment and supports consuming media, not injecting the agent's voice. Teams
+requires an Azure-registered calling/media bot. Zoom requires a Meeting SDK application and SDK
+authorization. The API reports these requirements rather than claiming a live bot is ready before
+those provider applications and worker runtimes have been provisioned. Companion mode—where the
+user joins normally and this backend supplies private suggestions and optional ElevenLabs audio—is
+the practical cross-platform MVP.
+
 ---
 
 ## Status

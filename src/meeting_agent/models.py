@@ -17,6 +17,13 @@ class SessionStatus(StrEnum):
     ENDED = "ended"
 
 
+class Provider(StrEnum):
+    GOOGLE = "google"
+    SLACK = "slack"
+    MICROSOFT = "microsoft"
+    ZOOM = "zoom"
+
+
 class SessionCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     owner_name: str = Field(min_length=1, max_length=100)
@@ -72,6 +79,50 @@ class AgentDecision(BaseModel):
     reason: str
     answer: str | None = None
     citations: list[Citation] = Field(default_factory=list)
+
+
+class CoachRequest(BaseModel):
+    latest_message: str = Field(min_length=1, max_length=10_000)
+    objective: str | None = Field(default=None, max_length=2_000)
+
+
+class CoachSuggestion(BaseModel):
+    suggestion: str
+    citations: list[Citation] = Field(default_factory=list)
+
+
+class OAuthStartView(BaseModel):
+    provider: Provider
+    authorization_url: str
+    expires_in_seconds: int = 600
+
+
+class IntegrationView(BaseModel):
+    provider: Provider
+    connected: bool
+    configured: bool
+    account_id: str | None = None
+    account_label: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    connected_at: datetime | None = None
+
+
+class ProviderCapabilityView(BaseModel):
+    provider: Provider
+    role: Literal["meeting", "context"]
+    oauth_supported: bool
+    context_imports: list[str]
+    live_audio_input: str
+    live_voice_output: str
+    requirement: str
+
+
+class ContextImportRequest(BaseModel):
+    provider: Provider
+    resource_type: str = Field(min_length=1, max_length=50)
+    resource_id: str = Field(min_length=1, max_length=2_000)
+    container_id: str | None = Field(default=None, max_length=2_000)
+    limit: int = Field(default=15, ge=1, le=50)
 
 
 class SpeakRequest(BaseModel):

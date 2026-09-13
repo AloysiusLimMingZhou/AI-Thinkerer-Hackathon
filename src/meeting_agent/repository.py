@@ -12,7 +12,9 @@ from .models import (
     Citation,
     ContextNoteCreate,
     ContextNoteView,
+    IntegrationView,
     MinutesView,
+    Provider,
     SessionCreate,
     SessionStatus,
     SessionView,
@@ -95,6 +97,22 @@ class SQLiteRepository:
                     event_type TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS oauth_states (
+                    state TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    code_verifier TEXT,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS integrations (
+                    provider TEXT PRIMARY KEY,
+                    encrypted_credentials TEXT NOT NULL,
+                    account_id TEXT,
+                    account_label TEXT,
+                    scopes_json TEXT NOT NULL,
+                    connected_at TEXT NOT NULL
                 );
                 """
             )
@@ -343,3 +361,114 @@ class SQLiteRepository:
             }
             for row in rows
         ]
+
+    def create_oauth_state(
+        self, state: str, provider: Provider, code_verifier: str | None
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM oauth_states WHERE created_at < ?",
+                ((datetime.now(UTC).timestamp() - 600),),
+            )
+            connection.execute(
+                """
+                INSERT INTO oauth_states (state, provider, code_verifier, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (state, provider, code_verifier, str(datetime.now(UTC).timestamp())),
+            )
+
+    def consume_oauth_state(
+        self, state: str, provider: Provider, max_age_seconds: int = 600
+    ) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT provider, code_verifier, created_at FROM oauth_states WHERE state = ?",
+                (state,),
+            ).fetchone()
+            connection.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
+        if row is None or row["provider"] != provider:
+            raise ValueError("Invalid OAuth state")
+        age = datetime.now(UTC).timestamp() - float(row["created_at"])
+        if age > max_age_seconds:
+            raise ValueError("OAuth state expired")
+        return row["code_verifier"]
+
+    def save_integration(
+        self,
+        provider: Provider,
+        encrypted_credentials: str,
+        *,
+        account_id: str | None,
+        account_label: str | None,
+        scopes: list[str],
+    ) -> IntegrationView:
+        connected_at = _now_iso()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO integrations
+                    (provider, encrypted_credentials, account_id, account_label,
+                     scopes_json, connected_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(provider) DO UPDATE SET
+                    encrypted_credentials = excluded.encrypted_credentials,
+                    account_id = excluded.account_id,
+                    account_label = excluded.account_label,
+                    scopes_json = excluded.scopes_json,
+                    connected_at = excluded.connected_at
+                """,
+                (
+                    provider,
+                    encrypted_credentials,
+                    account_id,
+                    account_label,
+                    json.dumps(scopes),
+                    connected_at,
+                ),
+            )
+        return IntegrationView(
+            provider=provider,
+            connected=True,
+            configured=True,
+            account_id=account_id,
+            account_label=account_label,
+            scopes=scopes,
+            connected_at=connected_at,
+        )
+
+    def get_encrypted_credentials(self, provider: Provider) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT encrypted_credentials FROM integrations WHERE provider = ?",
+                (provider,),
+            ).fetchone()
+        return row["encrypted_credentials"] if row else None
+
+    def get_integration(self, provider: Provider) -> IntegrationView | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT provider, account_id, account_label, scopes_json, connected_at
+                FROM integrations WHERE provider = ?
+                """,
+                (provider,),
+            ).fetchone()
+        if row is None:
+            return None
+        return IntegrationView(
+            provider=row["provider"],
+            connected=True,
+            configured=True,
+            account_id=row["account_id"],
+            account_label=row["account_label"],
+            scopes=json.loads(row["scopes_json"]),
+            connected_at=row["connected_at"],
+        )
+
+    def delete_integration(self, provider: Provider) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM integrations WHERE provider = ?", (provider,)
+            )
+        return cursor.rowcount > 0
