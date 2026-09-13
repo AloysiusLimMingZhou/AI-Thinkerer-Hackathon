@@ -15,9 +15,6 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from .recall import RecallError, RecallService
-from .recall_api import router_for
-
 from .config import Settings
 from .integrations import (
     ContextImporter,
@@ -45,6 +42,8 @@ from .models import (
     TranscriptEntry,
     UtteranceCreate,
 )
+from .recall import RecallError, RecallService
+from .recall_api import router_for
 from .repository import SQLiteRepository
 from .services import (
     Brain,
@@ -53,8 +52,8 @@ from .services import (
     OpenAIBrain,
     Voice,
     citations_for,
+    conversation_gate,
     retrieve_context,
-    should_answer,
 )
 
 
@@ -315,10 +314,12 @@ def create_app(
                 action="stay_silent", reason="waiting for final caption"
             )
         else:
-            approved, reason = should_answer(
+            approved, reason = conversation_gate(
                 payload.text,
-                agent_name=session.agent_name,
-                owner_name=session.owner_name,
+                speaker=payload.speaker,
+                session=session,
+                transcript=repository.get_transcript(session_id),
+                qa_log=repository.get_qa_log(session_id),
                 force_answer=payload.force_answer,
             )
             if not approved:
@@ -331,7 +332,7 @@ def create_app(
                     answer = await brain.answer(
                         session,
                         payload.text,
-                        repository.get_transcript(session_id),
+                        repository.get_dialogue(session_id),
                         selected_context,
                     )
                 except IntegrationUnavailable as exc:
@@ -371,7 +372,7 @@ def create_app(
             suggestion = await brain.answer(
                 session,
                 coaching_prompt,
-                repository.get_transcript(session_id),
+                repository.get_dialogue(session_id),
                 selected_context,
             )
         except IntegrationUnavailable as exc:

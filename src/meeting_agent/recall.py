@@ -22,7 +22,7 @@ from fastapi import HTTPException
 from .config import Settings
 from .models import ContextNoteCreate, SessionCreate, TranscriptEntry, UtteranceCreate
 from .recall_store import RecallStore
-from .services import citations_for, retrieve_context, should_answer
+from .services import citations_for, conversation_gate, retrieve_context
 
 logger = logging.getLogger(__name__)
 TERMINAL = {"done", "fatal", "call_ended", "deleted"}
@@ -559,50 +559,47 @@ class RecallService:
             "transcript.utterance",
             {"id": entry_id, **item.model_dump(mode="json")},
         )
-        approved, reason = should_answer(
+        approved, reason = conversation_gate(
             text,
-            agent_name=session.agent_name,
-            owner_name=session.owner_name,
+            speaker=speaker,
+            session=session,
+            transcript=self.repository.get_transcript(session_id),
+            qa_log=self.repository.get_qa_log(session_id),
             force_answer=False,
         )
-        # Recall may split a wake phrase from the next spoken question.
-        # Carry it only to the same speaker's immediate, short-gap follow-up.
-        recent = self.repository.get_transcript(session_id)
-        if not approved and len(recent) >= 2:
-            previous = recent[-2]
-            gap = (item.spoken_at - previous.spoken_at).total_seconds()
-            _, previous_reason = should_answer(
-                previous.text,
-                agent_name=session.agent_name,
-                owner_name=session.owner_name,
-            )
-            if (
-                previous.speaker == item.speaker
-                and 0 <= gap <= 6
-                and previous_reason == "addressed, but no response was requested"
-            ):
-                combined = previous.text + ". " + text
-                approved, reason = should_answer(
-                    combined,
-                    agent_name=session.agent_name,
-                    owner_name=session.owner_name,
-                )
-                if approved:
-                    text = combined
-                    reason = "wake phrase followed by same-speaker question"
         bot = self.store.bot(session_id)
         # Don't answer historical transcripts, the bot's own playback, or queued backlogs.
         stale = time.time() - float(data.get("alloy_received_at", time.time())) > 30
-        busy = self.store.one(
-            "SELECT id FROM recall_audio WHERE session_id=? AND expires>? AND state IN ('queued','playing')",
+        pending_audio = self.store.one(
+            "SELECT COUNT(*) AS count FROM recall_audio WHERE session_id=? AND expires>? AND state IN ('queued','playing')",
             (session_id, time.time()),
-        )
-        if not approved or stale or busy or bot["state"] in TERMINAL:
+        )["count"]
+        # The media page plays serially: allow one follow-up behind the current
+        # reply, but bound backlog instead of speaking a long queue of stale answers.
+        queue_full = pending_audio >= 2
+        if not approved or stale or queue_full or bot["state"] in TERMINAL:
+            self.repository.record_event(
+                session_id,
+                "agent.decision",
+                {
+                    "action": "stay_silent",
+                    "reason": "stale transcript"
+                    if stale
+                    else "reply queue full"
+                    if queue_full
+                    else "meeting ended"
+                    if bot["state"] in TERMINAL
+                    else reason,
+                    "utterance_id": entry_id,
+                },
+            )
             return
         notes = retrieve_context(text, self.repository.get_context(session_id))
+        started = time.perf_counter()
         answer = await self.brain.answer(
-            session, text, self.repository.get_transcript(session_id), notes
+            session, text, self.repository.get_dialogue(session_id), notes
         )
+        answer_ms = round((time.perf_counter() - started) * 1000)
         citations = citations_for(notes)
         self.repository.add_qa(session_id, text, answer, citations)
         self.repository.record_event(
@@ -613,16 +610,30 @@ class RecallService:
                 "reason": reason,
                 "answer": answer,
                 "citations": [c.model_dump() for c in citations],
+                "answer_ms": answer_ms,
+                "utterance_id": entry_id,
             },
         )
+        voice_started = time.perf_counter()
         audio = await self.voice.generate(answer)
+        voice_ms = round((time.perf_counter() - voice_started) * 1000)
         # Never speak a stale reply after a long API stall or after meeting end.
         if (
             time.time() - float(data.get("alloy_received_at", time.time())) <= 60
             and self.store.bot(session_id)["state"] not in TERMINAL
         ):
             self.store.add_audio(session_id, answer, audio, job_id)
-            self.repository.record_event(session_id, "voice.queued", {"id": job_id})
+            self.repository.record_event(
+                session_id,
+                "voice.queued",
+                {
+                    "id": job_id,
+                    "answer_ms": answer_ms,
+                    "voice_ms": voice_ms,
+                    "response_ready_ms": round((time.perf_counter() - started) * 1000),
+                    "replies_ahead": pending_audio,
+                },
+            )
 
     async def run_once(self):
         job = self.store.claim_job()

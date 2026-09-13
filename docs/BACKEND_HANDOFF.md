@@ -48,15 +48,47 @@ local demo, bind the frontend to localhost.
 Minimum UI: create a session, save notes, launch with explicit consent, poll bot
 status/transcript/events, show answers, send an explicit `/bot/say` message, and leave.
 Use a new session for every new bot test, even when reusing the same meeting URL.
-The delegate defaults to **Alloy** and speaks with **Charlie**. Only the configured
-delegate name wakes automatic replies: "Alloy, what's our budget?" works; generic
-"AI notetaker" does not. A name-only chunk can carry to the same speaker's question
-within six seconds. A manual `/bot/say` message does not require the wake name.
+The delegate defaults to **Alloy** and speaks with **Charlie**. Direct addresses such
+as "Alloy, what's our budget?" and "Hi Alloy" work; generic "AI notetaker" and isolated
+third-person mentions such as "what does Alloy think?" do not. For the Alloy/Aloy
+name pair only, direct-address ASR spelling "Aloy" is accepted too; this is a limited
+heuristic, not general name/entity recognition. A bare name can carry to the same
+speaker's question within six seconds. After a reply, that same speaker can follow up
+without repeating the name for 25 seconds, provided no other participant intervenes
+and the gap between captions is at most 30 seconds. Unknown speakers cannot carry a
+conversation window. A manual `/bot/say` message does not require the wake name.
+
+The API and database schema are unchanged. Continue sending frontend document text
+via `POST /sessions/{id}/context`. To include communication style and owner preferences
+even without keyword overlap, use note `source: "owner-profile"` (also accepts
+`"profile"` or `"briefing"`). Use authenticated operator-provided notes, e.g.:
+
+```json
+{"notes":[{"source":"owner-profile","title":"How Aloy communicates","content":"Aloy uses he/him. Prefers casual, concise English. Explain approved decisions; do not authorize spending or make new commitments."}]}
+```
+
+No document parsing/upload UI was added: the frontend still supplies extracted text.
+Notes are reference data, not unrestricted system instructions. The delegate has no
+message-sending, notification, approval or scheduling tools in its conversational
+answer path. Prior generated replies now accompany captions in model context, without
+altering the raw transcript API. Citations list selected reference notes; they are not
+model-verified, sentence-level attribution.
 
 Local provider smoke test (uses API credits, creates no meeting bot):
 `uv run python scripts/preflight_live.py`. It saves generated audio under ignored `data/`.
 This tests answer generation and TTS only; verify admission, live transcription and
-audible playback separately in a meeting. Reply latency is not yet optimized.
+audible playback separately in a meeting. Run `uv run python scripts/eval_conversation.py`
+for opt-in live conversational checks, including provider timing (uses API credits,
+never launches a bot or plays into a meeting).
+
+`OPENAI_ANSWER_MODEL=gpt-4.1-mini` selects the fast spoken-answer/coach model;
+`OPENAI_MODEL=gpt-5-mini` remains the minutes model. `ELEVENLABS_MODEL_ID=eleven_flash_v2_5`
+uses Flash speech with the same Charlie voice. Existing explicit environment values
+still take precedence; restart after changing `.env`. This remains a sequential
+transcript-to-text-to-audio pipeline, not full-duplex streaming. One follow-up reply can
+queue behind current audio; a further addressed utterance is skipped with an explicit
+`agent.decision` reason `reply queue full` to avoid a backlog of stale speech.
+No claim of subsecond end-to-end meeting response is made.
 
 ## Required configuration
 
@@ -140,6 +172,13 @@ Event types include `transcript.utterance`, `agent.decision`, `voice.queued`,
 Voice generated/queued is not proof the meeting heard it. `voice.played` means the
 media page reported playback completion; only a live participant can confirm sound
 actually reached the call.
+
+`agent.decision` now also reports silence reasons and the triggering `utterance_id`.
+Answered decisions include `answer_ms`; `voice.queued` adds `answer_ms`, `voice_ms`,
+and `response_ready_ms` (model start to ready audio; excludes transcription/network
+delivery before model start and meeting playback). All additions are optional event
+payload fields; keep existing frontend event handling tolerant of extra fields.
+`voice.queued.replies_ahead` reports the pending audio count before that reply was added.
 
 ## Calendar V2 setup and scheduling
 

@@ -15,7 +15,17 @@ from meeting_agent.services import should_answer
         ("Aloy's AI, what's our budget?", False),
         ("What's our budget?", False),
         ("Superalloy, what's our budget?", False),
-        ("Hello Alloy", False),
+        ("Hello Alloy", True),
+        ("Alloy", False),
+        ("Alloy, will you explain the plan?", True),
+        ("Alloy is a guy by the way", False),
+        ("Can you tell Alloy that?", False),
+        ("What does Alloy think?", False),
+        ("What do you think, Alloy?", True),
+        ("Alloy, can you tell Aloy the budget changed?", True),
+        ("hi aloy what is today's meeting about", True),
+        ("Can you tell Aloy that?", False),
+        ("Aloy is a guy", False),
     ],
 )
 def test_only_delegate_name_wakes_bot(text, expected):
@@ -28,6 +38,12 @@ def test_new_sessions_default_to_alloy():
 
 
 def test_custom_name_and_manual_override_still_work():
-    assert should_answer("Nova, when is launch?", agent_name="Nova", owner_name="Aloy")[0]
-    assert not should_answer("Alloy, when is launch?", agent_name="Nova", owner_name="Aloy")[0]
-    assert should_answer("When is launch?", agent_name="Alloy", owner_name="Aloy", force_answer=True)[0]
+    assert should_answer("Nova, when is launch?", agent_name="Nova", owner_name="Aloy")[
+        0
+    ]
+    assert not should_answer(
+        "Alloy, when is launch?", agent_name="Nova", owner_name="Aloy"
+    )[0]
+    assert should_answer(
+        "When is launch?", agent_name="Alloy", owner_name="Aloy", force_answer=True
+    )[0]

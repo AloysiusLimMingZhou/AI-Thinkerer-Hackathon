@@ -305,6 +305,22 @@ class SQLiteRepository:
             for row in rows
         ]
 
+    def get_dialogue(self, session_id: str) -> list[TranscriptEntry]:
+        """Model context includes its own prior replies, without altering raw captions."""
+        session = self.get_session(session_id)
+        entries = self.get_transcript(session_id)[-24:]
+        for index, qa in enumerate(self.get_qa_log(session_id)[-12:]):
+            entries.append(
+                TranscriptEntry(
+                    id=f"assistant-qa-{index}",
+                    speaker=session.agent_name,
+                    text=str(qa["answer"]),
+                    is_final=True,
+                    spoken_at=datetime.fromisoformat(str(qa["created_at"])),
+                )
+            )
+        return sorted(entries, key=lambda item: item.spoken_at)[-24:]
+
     def save_minutes(self, session_id: str, content: str) -> MinutesView:
         updated_at = _now_iso()
         with self._connect() as connection:

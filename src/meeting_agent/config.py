@@ -14,8 +14,9 @@ class Settings:
     openai_api_key: str | None = None
     elevenlabs_api_key: str | None = None
     openai_model: str = "gpt-5-mini"
+    openai_answer_model: str = "gpt-4.1-mini"
     elevenlabs_voice_id: str = "IKne3meq5aSn9XLyUdCD"
-    elevenlabs_model_id: str = "eleven_multilingual_v2"
+    elevenlabs_model_id: str = "eleven_flash_v2_5"
     database_path: Path = Path("data/meeting_agent.db")
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
     app_base_url: str = "http://localhost:8000"
@@ -61,12 +62,11 @@ class Settings:
             openai_api_key=os.getenv("OPENAI_API_KEY") or None,
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY") or None,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
+            openai_answer_model=os.getenv("OPENAI_ANSWER_MODEL", "gpt-4.1-mini"),
             elevenlabs_voice_id=os.getenv(
                 "ELEVENLABS_VOICE_ID", "IKne3meq5aSn9XLyUdCD"
             ),
-            elevenlabs_model_id=os.getenv(
-                "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"
-            ),
+            elevenlabs_model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
             database_path=Path(os.getenv("MEETING_AGENT_DB", "data/meeting_agent.db")),
             cors_origins=origins,
             app_base_url=os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/"),

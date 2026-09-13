@@ -9,13 +9,13 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 from fastapi import HTTPException, WebSocketDisconnect
+from fastapi.testclient import TestClient
+from test_api import FakeBrain, FakeVoice
 
 from meeting_agent.api import create_app
 from meeting_agent.config import Settings
 from meeting_agent.recall import RecallError, verify_webhook
-from test_api import FakeBrain, FakeVoice
 
 SECRET = "whsec_" + base64.b64encode(b"unit-test-secret-only").decode()
 BOT_ID = str(uuid4())
@@ -499,7 +499,7 @@ def test_split_wake_phrase_followup(tmp_path, same_speaker):
     sid = session(client)
     launch(client, service, sid)
     first = transcript()
-    first["data"]["data"]["words"][0]["text"] = "Hello Alloy"
+    first["data"]["data"]["words"][0]["text"] = "Alloy"
     signed(client, first, "wake-chunk")
     asyncio.run(service.run_once())
     assert not service.store.all("SELECT id FROM recall_audio")
@@ -510,3 +510,64 @@ def test_split_wake_phrase_followup(tmp_path, same_speaker):
     signed(client, followup, "question-chunk")
     asyncio.run(service.run_once())
     assert bool(service.store.all("SELECT id FROM recall_audio")) is same_speaker
+
+
+@pytest.mark.parametrize("same_speaker", [True, False])
+def test_reply_history_and_live_followup(tmp_path, same_speaker):
+    client, service, _ = make_backend(tmp_path)
+    sid = session(client)
+    launch(client, service, sid)
+    observed = []
+    original_answer = service.brain.answer
+
+    async def answer(session, question, history, notes):
+        observed.append(history)
+        return await original_answer(session, question, history, notes)
+
+    service.brain.answer = answer
+    signed(client, transcript(), "first-question")
+    asyncio.run(service.run_once())
+    service.store.execute(
+        "UPDATE recall_audio SET state='played' WHERE session_id=?", (sid,)
+    )
+    followup = transcript()
+    followup["data"]["data"]["words"][0]["text"] = "What about the budget?"
+    if not same_speaker:
+        followup["data"]["data"]["participant"]["name"] = "Another person"
+    signed(client, followup, "followup-question")
+    asyncio.run(service.run_once())
+    assert len(observed) == (2 if same_speaker else 1)
+    if same_speaker:
+        assert any(item.id.startswith("assistant-qa-") for item in observed[-1])
+    events = service.repository.get_events(sid)
+    assert any(
+        event["type"] == "voice.queued" and "response_ready_ms" in event["payload"]
+        for event in events
+    )
+    if not same_speaker:
+        assert events[-1]["payload"]["action"] == "stay_silent"
+
+
+def test_audio_queue_accepts_one_followup_then_bounds_backlog(tmp_path):
+    client, service, _ = make_backend(tmp_path)
+    sid = session(client)
+    launch(client, service, sid)
+    for index, question in enumerate(
+        [
+            "Alloy, when is launch?",
+            "And what about the budget?",
+            "Who owns the checklist?",
+        ]
+    ):
+        payload = transcript()
+        payload["data"]["data"]["words"][0]["text"] = question
+        signed(client, payload, f"queue-question-{index}")
+        asyncio.run(service.run_once())
+    assert (
+        len(service.store.all("SELECT id FROM recall_audio WHERE session_id=?", (sid,)))
+        == 2
+    )
+    decisions = [
+        e for e in service.repository.get_events(sid) if e["type"] == "agent.decision"
+    ]
+    assert decisions[-1]["payload"]["reason"] == "reply queue full"
