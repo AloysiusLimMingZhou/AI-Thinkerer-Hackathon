@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
+from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
+
+from .recall import RecallError, RecallService
+from .recall_api import router_for
 
 from .config import Settings
 from .integrations import (
@@ -53,6 +65,7 @@ def create_app(
     brain: Brain | None = None,
     voice: Voice | None = None,
     provider_requester: Requester | None = None,
+    recall_transport=None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     repository = repository or SQLiteRepository(settings.database_path)
@@ -60,12 +73,79 @@ def create_app(
     voice = voice or ElevenLabsVoice(settings)
     oauth = OAuthManager(settings, repository, provider_requester)
     context_importer = ContextImporter(oauth)
+    recall = RecallService(settings, repository, brain, voice, recall_transport)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        worker = asyncio.create_task(recall.worker())
+        try:
+            yield
+        finally:
+            worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await worker
 
     app = FastAPI(
         title="Meeting Agent API",
-        version="0.1.0",
+        version="0.2.0",
         description="Context-aware meeting delegate backend.",
+        lifespan=lifespan,
     )
+    app.state.recall = recall
+
+    @app.middleware("http")
+    async def private_backend(request: Request, call_next):
+        path = request.url.path
+        public = (
+            path in ("/health", "/docs", "/openapi.json", "/docs/oauth2-redirect")
+            or (request.method == "POST" and path == "/webhooks/recall")
+            or path.startswith("/recall/media/")
+            or (
+                request.method == "GET"
+                and (
+                    path == "/recall/calendar/callback"
+                    or path
+                    in {
+                        f"/integrations/{p}/callback"
+                        for p in ("google", "slack", "microsoft", "zoom")
+                    }
+                )
+            )
+        )
+        if request.method != "OPTIONS" and not public:
+            if not settings.backend_api_token:
+                return JSONResponse(
+                    {"detail": "Set BACKEND_API_TOKEN before using the backend"},
+                    status_code=503,
+                )
+            supplied = request.headers.get("authorization", "")
+            if not hmac.compare_digest(
+                supplied, "Bearer " + settings.backend_api_token
+            ):
+                return JSONResponse(
+                    {"detail": "Backend authentication required"}, status_code=401
+                )
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+    @app.exception_handler(RecallError)
+    async def recall_error(request, exc):
+        headers = (
+            {"Retry-After": str(int(exc.retry_after) + 1)} if exc.retry_after else None
+        )
+        return JSONResponse(
+            {"detail": str(exc), "needs_reconciliation": exc.ambiguous},
+            status_code=503,
+            headers=headers,
+        )
+
+    @app.exception_handler(IntegrationUnavailable)
+    async def integration_unavailable(request, exc):
+        return JSONResponse({"detail": str(exc)}, status_code=503)
+
+    app.include_router(router_for(recall))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
@@ -212,7 +292,9 @@ def create_app(
     )
     async def transcript(session_id: str) -> list[TranscriptEntry]:
         require_session(session_id)
-        return repository.get_transcript(session_id)
+        return recall.final_transcript(session_id) or repository.get_transcript(
+            session_id
+        )
 
     @app.post(
         "/sessions/{session_id}/utterances",
@@ -324,7 +406,9 @@ def create_app(
     )
     async def generate_minutes(session_id: str) -> MinutesView:
         session = require_session(session_id)
-        transcript_entries = repository.get_transcript(session_id)
+        transcript_entries = recall.final_transcript(
+            session_id
+        ) or repository.get_transcript(session_id)
         if not transcript_entries:
             raise HTTPException(status_code=409, detail="Cannot generate empty minutes")
         try:
@@ -363,10 +447,24 @@ def create_app(
 
     @app.websocket("/sessions/{session_id}/stream")
     async def event_stream(websocket: WebSocket, session_id: str) -> None:
+        supplied = websocket.headers.get("authorization", "")
+        protocols = websocket.scope.get("subprotocols", [])
+        selected_protocol = None
+        if not supplied and protocols:
+            selected_protocol = next(
+                (p for p in protocols if p.startswith("bearer.")), None
+            )
+            if selected_protocol:
+                supplied = "Bearer " + selected_protocol.removeprefix("bearer.")
+        if not settings.backend_api_token or not hmac.compare_digest(
+            supplied, "Bearer " + settings.backend_api_token
+        ):
+            await websocket.close(code=4401, reason="Backend authentication required")
+            return
         if repository.get_session(session_id) is None:
             await websocket.close(code=4404, reason="Session not found")
             return
-        await websocket.accept()
+        await websocket.accept(subprotocol=selected_protocol)
         sequence = 0
         try:
             while True:
@@ -378,6 +476,11 @@ def create_app(
         except WebSocketDisconnect:
             return
 
+    schema = app.openapi()
+    schema.setdefault("components", {})["securitySchemes"] = {
+        "BackendToken": {"type": "http", "scheme": "bearer"}
+    }
+    schema["security"] = [{"BackendToken": []}]
     return app
 
 

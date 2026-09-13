@@ -8,19 +8,24 @@ actually asks it something**, and afterwards writes up proper meeting minutes.
 
 ## Backend quick start
 
+**Current backend integration guide:** [docs/BACKEND_HANDOFF.md](docs/BACKEND_HANDOFF.md).
+It documents Recall bot joining/voice, Calendar V2 scheduling, required credentials,
+API authentication, frontend endpoints, and the remaining live-verification steps.
+The architecture and simulator commands later in this README remain the original plan.
+
 The first backend slice is available as a FastAPI service. It stores meeting sessions, notes,
 transcripts, gate decisions, answers, and minutes in SQLite; uses OpenAI's Responses API for the
 meeting brain; and returns ElevenLabs speech as MP3.
 
 ```bash
-cp .env.example .env
-# Add OPENAI_API_KEY and ELEVENLABS_API_KEY to .env
+# Only if .env does not exist yet: cp .env.example .env
+# Add provider keys and a random BACKEND_API_TOKEN to .env (never commit it).
 uv sync
 uv run python main.py
 ```
 
 Open [http://localhost:8000/docs](http://localhost:8000/docs) for the interactive API. A minimal
-demo flow is:
+demo flow is below. Click Authorize and enter your local BACKEND_API_TOKEN first:
 
 1. `POST /sessions` with a title, owner name, and wake name.
 2. `POST /sessions/{id}/context` with notes from earlier meetings or project docs.
@@ -47,13 +52,10 @@ then use:
 - `POST /sessions/{id}/coach` to privately suggest what the user should say next. Send that text to
   `/sessions/{id}/speak` when voice-over is desired.
 
-Live meeting media is deliberately provider-specific. Google Meet Media API currently requires
-Developer Preview enrollment and supports consuming media, not injecting the agent's voice. Teams
-requires an Azure-registered calling/media bot. Zoom requires a Meeting SDK application and SDK
-authorization. The API reports these requirements rather than claiming a live bot is ready before
-those provider applications and worker runtimes have been provisioned. Companion mode—where the
-user joins normally and this backend supplies private suggestions and optional ElevenLabs audio—is
-the practical cross-platform MVP.
+The Recall adapter now handles guest-bot joining for Meet, Teams and Zoom and plays
+ElevenLabs responses through Recall Output Media. It is separate from the direct-provider
+OAuth context connectors above. See the handoff guide before dispatching a real bot;
+live credentials, a stable public backend and meeting-host permissions are still required.
 
 ---
 
@@ -61,9 +63,10 @@ the practical cross-platform MVP.
 
 | | |
 |---|---|
-| ✅ Working | FastAPI + SQLite backend, note retrieval, silent-by-default gate, OpenAI answer/minutes providers, ElevenLabs TTS provider, event stream, offline tests |
-| 🔨 In progress | Meeting-platform adapter, caption aggregation, context connectors, and demo UI |
-| 📋 Not started | Production Google Meet bot, Slack/Calendar/Drive OAuth, and ElevenLabs Scribe ingestion |
+| ✅ Locally tested | FastAPI + SQLite, Recall dispatch/webhooks/media outbox, Calendar V2 scheduling, note retrieval, provider adapters, and 19 offline tests |
+| 🔨 Pending live verification | OpenAI/ElevenLabs calls, public webhook delivery, Google Calendar consent, and a confirmed test meeting |
+| 🔌 Frontend | Merged Next.js dashboard in `apps/web`; currently uses fixtures, not live backend data |
+| 📋 Future work | Multi-user authentication, connector token refresh, Drive import, retention controls and full-duplex voice |
 
 Commands below marked *(planned)* do not run yet.
 

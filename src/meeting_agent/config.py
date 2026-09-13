@@ -28,6 +28,12 @@ class Settings:
     microsoft_client_secret: str | None = None
     zoom_client_id: str | None = None
     zoom_client_secret: str | None = None
+    backend_api_token: str | None = None
+    recall_api_key: str | None = None
+    recall_region: str = "ap-northeast-1"
+    recall_webhook_verification_secret: str | None = None
+    public_api_base_url: str | None = None
+    recall_calendar_callback_uri: str | None = None
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -38,6 +44,17 @@ class Settings:
             if origin.strip()
         )
         return cls(
+            backend_api_token=os.getenv("BACKEND_API_TOKEN") or None,
+            recall_api_key=os.getenv("RECALL_API_KEY") or None,
+            recall_region=os.getenv("RECALL_REGION", "ap-northeast-1"),
+            recall_webhook_verification_secret=os.getenv(
+                "RECALL_WEBHOOK_VERIFICATION_SECRET"
+            )
+            or None,
+            public_api_base_url=(os.getenv("PUBLIC_API_BASE_URL") or "").rstrip("/")
+            or None,
+            recall_calendar_callback_uri=os.getenv("RECALL_CALENDAR_CALLBACK_URI")
+            or None,
             openai_api_key=os.getenv("OPENAI_API_KEY") or None,
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY") or None,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),

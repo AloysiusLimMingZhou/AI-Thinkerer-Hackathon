@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="referrer" content="no-referrer">
+<title>Alloy — AI meeting delegate</title>
+<style>
+body{margin:0;background:#101a24;color:#e4eee8;font:28px system-ui;display:grid;place-content:center;height:100vh;text-align:center}
+.orb{margin:auto;width:110px;height:110px;border-radius:50%;background:#90dfb0;box-shadow:0 0 90px #90dfb044}
+h1{font-size:56px;margin-bottom:12px}p{color:#abc0ba}#state{color:#90dfb0}
+</style>
+<div class="orb"></div><h1>Alloy</h1><p>AI delegate · Meeting transcription active</p><p id="state">Listening</p>
+<script>
+const token = new URLSearchParams(location.search).get('token');
+const base = location.pathname;
+const query = '?token=' + encodeURIComponent(token);
+const statusEl = document.getElementById('state');
+history.replaceState(null, '', base); // Keep bearer capability out of the displayed URL.
+async function play(item) {
+  const audio = new Audio(base + '/audio/' + encodeURIComponent(item.id) + query);
+  let outcome = 'failed';
+  statusEl.textContent = 'Speaking';
+  try {
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {audio.pause(); reject(new Error('timeout'));}, 60000);
+      audio.onended = () => {clearTimeout(timeout); resolve();};
+      audio.onerror = () => {clearTimeout(timeout); reject(new Error('playback'));};
+      audio.play().catch(error => {clearTimeout(timeout); reject(error);});
+    });
+    outcome = 'played';
+  } finally {
+    await fetch(base + '/audio/' + encodeURIComponent(item.id) + '/' + outcome + query, {method:'POST', cache:'no-store'});
+    statusEl.textContent = outcome === 'played' ? 'Listening' : 'Audio unavailable';
+  }
+}
+async function loop() {
+  while (true) {
+    try {
+      const response = await fetch(base + '/next' + query, {cache:'no-store'});
+      if (response.status === 401) {statusEl.textContent = 'Session ended'; return;}
+      if (response.status === 200) await play(await response.json());
+      else if (response.status !== 204) statusEl.textContent = 'Reconnecting';
+    } catch {statusEl.textContent = 'Reconnecting';}
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+}
+loop();
+</script></html>

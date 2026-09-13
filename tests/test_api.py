@@ -91,9 +91,11 @@ class FakeProviderRequester:
 
 def make_client(tmp_path: Path) -> tuple[TestClient, FakeBrain]:
     brain = FakeBrain()
-    settings = Settings(database_path=tmp_path / "test.db")
+    settings = Settings(
+        database_path=tmp_path / "test.db", backend_api_token="test-token"
+    )
     app = create_app(settings=settings, brain=brain, voice=FakeVoice())
-    return TestClient(app), brain
+    return TestClient(app, headers={"Authorization": "Bearer test-token"}), brain
 
 
 def test_end_to_end_session_flow(tmp_path: Path) -> None:
@@ -211,6 +213,7 @@ def test_unknown_session_is_404(tmp_path: Path) -> None:
 def test_slack_oauth_and_context_import(tmp_path: Path) -> None:
     requester = FakeProviderRequester()
     settings = Settings(
+        backend_api_token="test-token",
         database_path=tmp_path / "oauth.db",
         oauth_encryption_key="a-secure-development-key-that-is-long-enough",
         slack_client_id="slack-client",
@@ -222,7 +225,7 @@ def test_slack_oauth_and_context_import(tmp_path: Path) -> None:
         voice=FakeVoice(),
         provider_requester=requester,
     )
-    client = TestClient(app)
+    client = TestClient(app, headers={"Authorization": "Bearer test-token"})
 
     capabilities = client.get("/platforms")
     assert capabilities.status_code == 200
