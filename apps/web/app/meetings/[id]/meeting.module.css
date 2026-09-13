@@ -1,0 +1,270 @@
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 20px var(--gutter) 96px;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: var(--t-14);
+}
+
+.back,
+.step a,
+.step span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 2px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.back:hover,
+.step a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.step {
+  display: flex;
+  gap: 18px;
+  color: var(--ink-2);
+}
+
+.step span[aria-disabled] {
+  color: var(--ink-3);
+  opacity: 0.55;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px 32px;
+  margin: 26px 0 28px;
+}
+
+.heading {
+  min-width: 0;
+  flex: 1 1 520px;
+}
+
+.heading h1 {
+  font-size: clamp(2.5rem, 1.4rem + 3.2vw, 4rem);
+  font-weight: 740;
+  line-height: 0.98;
+  letter-spacing: -0.01em;
+}
+
+.meta {
+  margin-top: 12px;
+  font-size: var(--t-16);
+  color: var(--ink-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 36px;
+  align-items: start;
+}
+
+.record {
+  min-width: 0;
+}
+
+/* Aside, on the paper */
+.aside {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  padding-top: 6px;
+}
+
+.aside h2 {
+  font-size: var(--t-15);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.asideNote {
+  margin: -4px 0 10px;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+
+.visit {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  justify-content: start;
+  gap: 4px 26px;
+}
+
+.visit dt {
+  font-size: var(--t-12);
+  color: var(--ink-3);
+}
+
+.visit dd {
+  margin: 2px 0 0;
+  font-size: var(--t-16);
+  font-weight: 650;
+}
+
+.people li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 0;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.personText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.personName {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--t-14);
+  font-weight: 650;
+}
+
+.tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.role {
+  font-size: var(--t-12);
+  color: var(--ink-2);
+}
+
+.more {
+  padding-left: 38px !important;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+
+.context li {
+  display: flex;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.context li:first-child {
+  border-top: 0;
+}
+
+.contextIcon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--sheet);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--ink-2);
+}
+
+.contextLabel {
+  display: block;
+  font-size: var(--t-14);
+  font-weight: 650;
+}
+
+.contextDetail {
+  display: block;
+  font-size: var(--t-12);
+  color: var(--ink-2);
+}
+
+/* Not admitted */
+.notIn {
+  padding: 40px 36px 44px;
+  max-width: 44rem;
+}
+
+.notInIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink-2);
+  margin-bottom: 18px;
+}
+
+.notIn h2 {
+  font-size: var(--t-24);
+  font-weight: 700;
+}
+
+.notIn p {
+  margin-top: 12px;
+  font-size: var(--t-16);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+@media (max-width: 1080px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .aside {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 28px;
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    margin: 18px 0 20px;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .notIn {
+    padding: 28px 20px 32px;
+  }
+}
