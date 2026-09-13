@@ -3,6 +3,7 @@ import base64
 import hmac
 import json
 import time
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -20,6 +21,25 @@ SECRET = "whsec_" + base64.b64encode(b"unit-test-secret-only").decode()
 BOT_ID = str(uuid4())
 CAL_ID = str(uuid4())
 EVENT_ID = str(uuid4())
+
+
+def test_separate_media_origin_preserves_stable_webhook(tmp_path):
+    client, service, _ = make_backend(tmp_path)
+    sid = session(client)
+    service.settings = replace(
+        service.settings, recall_media_base_url="https://media.example.com"
+    )
+    service.require_ready()
+    config = service.bot_config(
+        service.repository.get_session(sid), None, int(time.time() + 3600)
+    )
+    assert config["output_media"]["camera"]["config"]["url"].startswith(
+        "https://media.example.com/recall/media/"
+    )
+    assert (
+        config["recording_config"]["realtime_endpoints"][0]["url"]
+        == "https://backend.example.com/webhooks/recall"
+    )
 
 
 def make_backend(tmp_path, handler=None):
@@ -471,3 +491,22 @@ def test_real_lifespan_worker_consumes_launch(tmp_path):
                 break
             time.sleep(0.02)
         assert service.store.bot(sid)["bot_id"] == BOT_ID
+
+
+@pytest.mark.parametrize("same_speaker", [True, False])
+def test_split_wake_phrase_followup(tmp_path, same_speaker):
+    client, service, _ = make_backend(tmp_path)
+    sid = session(client)
+    launch(client, service, sid)
+    first = transcript()
+    first["data"]["data"]["words"][0]["text"] = "Hello Alloy"
+    signed(client, first, "wake-chunk")
+    asyncio.run(service.run_once())
+    assert not service.store.all("SELECT id FROM recall_audio")
+    followup = transcript()
+    followup["data"]["data"]["words"][0]["text"] = "When is the demo launch?"
+    if not same_speaker:
+        followup["data"]["data"]["participant"]["name"] = "Someone else"
+    signed(client, followup, "question-chunk")
+    asyncio.run(service.run_once())
+    assert bool(service.store.all("SELECT id FROM recall_audio")) is same_speaker

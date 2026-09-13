@@ -46,14 +46,10 @@ def should_answer(
         return True, "manual override"
 
     normalized = " ".join(text.lower().split())
-    aliases = {
-        agent_name.lower(),
-        f"{owner_name.lower()}'s ai",
-        "ai notetaker",
-    }
-    addressed = any(
-        re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", normalized)
-        for alias in aliases
+    # Only the configured delegate name wakes it; generic role labels do not.
+    wake_name = " ".join(agent_name.lower().split())
+    addressed = bool(wake_name) and re.search(
+        r"(?<!\w)" + re.escape(wake_name) + r"(?!\w)", normalized
     )
     if not addressed:
         return False, "wake name not detected"

@@ -27,7 +27,7 @@ class Provider(StrEnum):
 class SessionCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     owner_name: str = Field(min_length=1, max_length=100)
-    agent_name: str = Field(default="Thinkerer", min_length=1, max_length=100)
+    agent_name: str = Field(default="Alloy", min_length=1, max_length=100)
     meeting_url: str | None = Field(default=None, max_length=2_000)
 
 

@@ -202,6 +202,8 @@ class RecallService:
             raise HTTPException(503, {"missing": missing})
         try:
             public_url(self.settings.public_api_base_url)
+            if self.settings.recall_media_base_url:
+                public_url(self.settings.recall_media_base_url)
         except ValueError as exc:
             raise HTTPException(503, str(exc)) from None
 
@@ -228,6 +230,7 @@ class RecallService:
 
     def bot_config(self, session, join_at, expires):
         url = self.settings.public_api_base_url
+        media_url = self.settings.recall_media_base_url or url
         token = self.media_token(session.id, expires)
         config = {
             "meeting_url": session.meeting_url,
@@ -262,7 +265,7 @@ class RecallService:
                 "camera": {
                     "kind": "webpage",
                     "config": {
-                        "url": f"{url}/recall/media/{session.id}?{urlencode({'token': token})}"
+                        "url": f"{media_url}/recall/media/{session.id}?{urlencode({'token': token})}"
                     },
                 }
             },
@@ -562,6 +565,31 @@ class RecallService:
             owner_name=session.owner_name,
             force_answer=False,
         )
+        # Recall may split a wake phrase from the next spoken question.
+        # Carry it only to the same speaker's immediate, short-gap follow-up.
+        recent = self.repository.get_transcript(session_id)
+        if not approved and len(recent) >= 2:
+            previous = recent[-2]
+            gap = (item.spoken_at - previous.spoken_at).total_seconds()
+            _, previous_reason = should_answer(
+                previous.text,
+                agent_name=session.agent_name,
+                owner_name=session.owner_name,
+            )
+            if (
+                previous.speaker == item.speaker
+                and 0 <= gap <= 6
+                and previous_reason == "addressed, but no response was requested"
+            ):
+                combined = previous.text + ". " + text
+                approved, reason = should_answer(
+                    combined,
+                    agent_name=session.agent_name,
+                    owner_name=session.owner_name,
+                )
+                if approved:
+                    text = combined
+                    reason = "wake phrase followed by same-speaker question"
         bot = self.store.bot(session_id)
         # Don't answer historical transcripts, the bot's own playback, or queued backlogs.
         stale = time.time() - float(data.get("alloy_received_at", time.time())) > 30

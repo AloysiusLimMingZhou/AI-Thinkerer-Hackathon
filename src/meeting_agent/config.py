@@ -14,7 +14,7 @@ class Settings:
     openai_api_key: str | None = None
     elevenlabs_api_key: str | None = None
     openai_model: str = "gpt-5-mini"
-    elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
+    elevenlabs_voice_id: str = "IKne3meq5aSn9XLyUdCD"
     elevenlabs_model_id: str = "eleven_multilingual_v2"
     database_path: Path = Path("data/meeting_agent.db")
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
@@ -33,6 +33,7 @@ class Settings:
     recall_region: str = "ap-northeast-1"
     recall_webhook_verification_secret: str | None = None
     public_api_base_url: str | None = None
+    recall_media_base_url: str | None = None
     recall_calendar_callback_uri: str | None = None
 
     @classmethod
@@ -44,6 +45,8 @@ class Settings:
             if origin.strip()
         )
         return cls(
+            recall_media_base_url=(os.getenv("RECALL_MEDIA_BASE_URL") or "").rstrip("/")
+            or None,
             backend_api_token=os.getenv("BACKEND_API_TOKEN") or None,
             recall_api_key=os.getenv("RECALL_API_KEY") or None,
             recall_region=os.getenv("RECALL_REGION", "ap-northeast-1"),
@@ -59,7 +62,7 @@ class Settings:
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY") or None,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
             elevenlabs_voice_id=os.getenv(
-                "ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb"
+                "ELEVENLABS_VOICE_ID", "IKne3meq5aSn9XLyUdCD"
             ),
             elevenlabs_model_id=os.getenv(
                 "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"

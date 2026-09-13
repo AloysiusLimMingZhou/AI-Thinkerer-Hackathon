@@ -22,17 +22,54 @@ the backend token server-side. Never put the shared token or vendor keys into
 proxy still needs its own user authentication. Configure `CORS_ORIGINS` for the exact
 local UI origin if making direct development requests.
 
+## Frontend teammate: wire the demo
+
+The current `apps/web/lib/data.ts` still returns fixtures; pulling this backend does
+not automatically connect the UI. Keep the existing design and replace fixture reads
+with the real endpoint flow below. For this demo, skip calendar/account linking and
+start with a meeting URL plus briefing notes.
+
+In the frontend's ignored `apps/web/.env.local`, configure server-only variables:
+
+```dotenv
+ALLOY_BACKEND_URL=https://your-backend-tunnel.example
+BACKEND_API_TOKEN=replace-with-the-operator-token-shared-privately
+```
+
+Use `http://127.0.0.1:8000` only if the backend runs on the same machine as the
+Next.js server. Otherwise ask the backend operator for the current HTTPS tunnel URL.
+Keep the backend and both tunnels running during the demo. These environment names
+are the proposed proxy contract, not an already-implemented frontend integration.
+The Next.js server proxy must attach `Authorization: Bearer ...`, use `cache: "no-store"`,
+preserve backend status codes, and never return credentials to the browser. Protect
+the proxy with frontend authentication before exposing it publicly; for a supervised
+local demo, bind the frontend to localhost.
+
+Minimum UI: create a session, save notes, launch with explicit consent, poll bot
+status/transcript/events, show answers, send an explicit `/bot/say` message, and leave.
+Use a new session for every new bot test, even when reusing the same meeting URL.
+The delegate defaults to **Alloy** and speaks with **Charlie**. Only the configured
+delegate name wakes automatic replies: "Alloy, what's our budget?" works; generic
+"AI notetaker" does not. A name-only chunk can carry to the same speaker's question
+within six seconds. A manual `/bot/say` message does not require the wake name.
+
+Local provider smoke test (uses API credits, creates no meeting bot):
+`uv run python scripts/preflight_live.py`. It saves generated audio under ignored `data/`.
+This tests answer generation and TTS only; verify admission, live transcription and
+audible playback separately in a meeting. Reply latency is not yet optimized.
+
 ## Required configuration
 
 | Variable | Purpose |
 | --- | --- |
 | `OPENAI_API_KEY` | Responses API access and available API credit |
 | `ELEVENLABS_API_KEY` | Text to Speech permission and available credits |
-| `ELEVENLABS_VOICE_ID` | Authorized voice; default George ID is in `.env.example` |
+| `ELEVENLABS_VOICE_ID` | Authorized voice; default Charlie ID is in `.env.example` |
 | `RECALL_API_KEY` | REST key for Alloy Bot, Tokyo |
 | `RECALL_WEBHOOK_VERIFICATION_SECRET` | Workspace verification secret, not an arbitrary endpoint secret |
 | `RECALL_REGION` | Must remain `ap-northeast-1` |
 | `PUBLIC_API_BASE_URL` | Stable public HTTPS backend/tunnel address |
+| `RECALL_MEDIA_BASE_URL` | Optional separate HTTPS origin for the bot webpage, serving this same backend; defaults to the public API origin |
 | `BACKEND_API_TOKEN` | Random shared backend operator secret |
 | `OAUTH_ENCRYPTION_KEY` | Random key for optional context-connector tokens |
 
@@ -185,6 +222,10 @@ or horizontal scaling. Context connector refresh-token renewal is not implemente
 Google Drive import is not implemented. Live speech waits for a finalized utterance,
 then OpenAI + TTS: it is not full-duplex, streaming voice-to-voice or barge-in capable.
 Output Media displays a simple AI-delegate video card as well as playing audio.
+If a free ngrok endpoint shows its browser warning, use a warning-free media origin
+via `RECALL_MEDIA_BASE_URL`. A temporary Cloudflare quick tunnel is only for a live,
+supervised direct-link demo; keep it running and never register it for calendar OAuth.
+The stable ngrok origin can continue receiving the non-browser webhook requests.
 Audio expires after 60 seconds; media access expires eight hours after intended join.
 Do not expose a production multi-user app on top of the shared demo token.
 
