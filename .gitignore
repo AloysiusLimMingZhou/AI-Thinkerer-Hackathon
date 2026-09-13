@@ -2,3 +2,9 @@
 .DS_STORE
 .venv
 node_modules
+.env.*
+!.env.example
+data/
+*.db
+__pycache__/
+.pytest_cache/

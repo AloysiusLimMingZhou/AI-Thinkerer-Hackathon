@@ -1,19 +1,12 @@
-from elevenlabs.client import ElevenLabs
-from elevenlabs.play import play
-from dotenv import load_dotenv
-import os
+"""Local development entry point."""
 
-load_dotenv()
+import uvicorn
 
-client = ElevenLabs(
-    api_key=os.getenv('ELEVENLABS_API_KEY')
-)
-
-audio = client.text_to_speech.convert(
-    text="The first move is what sets everything in motion.",
-    voice_id="JBFqnCBsd6RMkjVDRZzb",
-    model_id="eleven_multilingual_v2",
-    output_format="mp3_44100_128",
-)
-
-play(audio)
+if __name__ == "__main__":
+    uvicorn.run(
+        "meeting_agent.api:app",
+        host="127.0.0.1",
+        port=8000,
+        reload=True,
+        access_log=False,  # OAuth codes and scoped media tokens must not enter logs.
+    )
