@@ -1,6 +1,6 @@
 ﻿# Meeting Agent
 
-> AI Thinkerer Hackathon — *Agents Everywhere*. Hi Aloy 👋
+> AI Thinkerer Hackathon — *Agents Everywhere*. 
 
 **An agent that attends your meetings for you.** It joins the call pre-briefed from your chat
 history (Slack, the calendar invite, attached Drive docs), listens, **speaks only when somebody
