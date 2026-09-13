@@ -17,8 +17,10 @@ export interface ScoreData {
   heldBack: { id: string; t: number; clock: string; text: string; heading: string; note: string }[];
   chat: { id: string; turnId: string; t: number; clock: string; text: string }[];
   agentName: string;
-  /** One sentence the chart supports, e.g. "Aloy-bot spoke 4 times…". */
+  /** One sentence the chart supports, e.g. "Alloy answered 4 times…". */
   summary: string;
+  /** Small print about how the marks were drawn. */
+  note?: string;
 }
 
 interface Tip {
@@ -162,14 +164,19 @@ export function MeetingScore({ data }: { data: ScoreData }) {
             <span className={styles.keyVoice} aria-hidden="true" /> People talking
           </li>
           <li>
-            <span className={styles.keySpoke} aria-hidden="true" /> {data.agentName} talking
+            <span className={styles.keySpoke} aria-hidden="true" /> {data.agentName} answering
           </li>
-          <li>
-            <span className={styles.keyRing} aria-hidden="true" /> Held back
-          </li>
-          <li>
-            <span className={styles.keyChat} aria-hidden="true" /> Posted in chat
-          </li>
+          {data.heldBack.length > 0 && (
+            <li>
+              <span className={styles.keyRing} aria-hidden="true" /> Named, but not asked
+            </li>
+          )}
+          {data.chat.length > 0 && (
+            <li>
+              <span className={styles.keyChat} aria-hidden="true" /> Posted in chat
+            </li>
+          )}
+          {data.note && <li className={styles.legendNote}>{data.note}</li>}
         </ul>
       </figcaption>
     </figure>

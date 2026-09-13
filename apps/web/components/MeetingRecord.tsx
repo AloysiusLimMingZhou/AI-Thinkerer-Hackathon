@@ -42,7 +42,7 @@ interface Props {
 export function MeetingRecord({ initialView, labels, score, panels }: Props) {
   const [view, setView] = useState<View>(initialView);
   const [target, setTarget] = useState<{ id: string; nonce: number } | null>(null);
-  const tabRefs = useRef<Record<View, HTMLButtonElement | null>>({ summary: null, said: null, transcript: null });
+  const tabRefs = useRef<Partial<Record<View, HTMLButtonElement | null>>>({});
 
   const goTo = useCallback<GoTo>((next, targetId) => {
     setView(next);

@@ -27,7 +27,7 @@
 
 .columns {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 380px;
   gap: 40px;
   align-items: start;
 }
@@ -235,89 +235,61 @@
   color: var(--ink-2);
 }
 
-/* Waiting on you */
-.waitingHead {
+/* Send to a meeting */
+.side {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 38px;
-  margin-bottom: 14px;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.waitingHead h2 {
+.sendSheet {
+  padding: 22px 22px 24px;
+}
+
+.sendTitle {
+  font-size: var(--t-21);
+  font-weight: 680;
+  letter-spacing: -0.005em;
+  margin-bottom: 16px;
+}
+
+.more {
+  margin-top: 10px;
+  font-size: var(--t-14);
+  color: var(--ink-3);
+}
+
+/* Bot state on each row */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+
+.state {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-
-.waitingHead h2 svg {
-  color: var(--amber);
-}
-
-.count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 8px;
-  border-radius: 15px;
-  background: var(--amber-wash);
-  font-size: var(--t-14);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.waitingIntro {
-  font-size: var(--t-14);
-  color: var(--ink-2);
-  padding-bottom: 6px;
-}
-
-.waitingEmpty {
-  padding: 16px 0;
-  color: var(--ink-2);
-}
-
-.waitList {
-  margin-top: 8px;
-}
-
-.waitItem {
-  padding: 18px 0 20px;
-  border-top: 1px solid var(--rule);
-}
-
-.due {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--t-14);
+  gap: 7px;
   font-weight: 600;
-  color: var(--ink-2);
-  margin-bottom: 6px;
-}
-
-.overdue {
-  color: var(--amber);
-}
-
-.waitItem h3 {
-  font-size: var(--t-18);
-  font-weight: 650;
-  line-height: 1.35;
-}
-
-.waitQuote {
-  margin-top: 10px;
-  font-size: var(--t-15);
-  line-height: 1.5;
   color: var(--ink);
 }
 
-.waitMeta {
-  margin-top: 10px;
-  font-size: var(--t-14);
+.tone_waiting {
   color: var(--ink-2);
+}
+
+.tone_done {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.tone_problem {
+  color: var(--amber);
+}
+
+.platform {
+  color: var(--ink-3);
 }
 
 @media (max-width: 1080px) {
@@ -325,7 +297,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .waiting {
+  .side {
     order: -1;
     max-width: 44rem;
   }

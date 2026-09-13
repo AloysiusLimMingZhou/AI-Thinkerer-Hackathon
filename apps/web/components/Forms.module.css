@@ -1,0 +1,78 @@
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  font-size: var(--t-14);
+  font-weight: 650;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--sheet);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 400;
+  font-size: var(--t-14);
+}
+
+.field textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  border-color: var(--ink);
+}
+
+.ok {
+  font-size: var(--t-14);
+  color: var(--ink-2);
+}
+
+.error {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--amber-paper);
+  box-shadow: inset 0 0 0 1px var(--amber-line);
+  font-size: var(--t-14);
+}
+
+.answer {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px 10px 14px;
+  border-left: 3px solid var(--onair);
+  background: var(--onair-wash);
+  border-radius: 0 8px 8px 0;
+  font-size: var(--t-14);
+  line-height: 1.5;
+}
+
+.answer :global(.lamp) {
+  margin-top: 5px;
+}
