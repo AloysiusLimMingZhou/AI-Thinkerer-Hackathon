@@ -1,0 +1,329 @@
+.score {
+  padding: 22px 28px 20px;
+  border-bottom: 1px solid var(--rule-2);
+}
+
+.plot {
+  position: relative;
+  --label-w: 148px;
+}
+
+.axis,
+.lane {
+  display: grid;
+  grid-template-columns: var(--label-w) minmax(0, 1fr);
+  column-gap: 16px;
+  align-items: center;
+}
+
+.axisTrack {
+  position: relative;
+  height: 24px;
+}
+
+.tick {
+  position: absolute;
+  bottom: 6px;
+  translate: -50% 0;
+  font-size: var(--t-12);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tick:first-child {
+  translate: 0 0;
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--t-14);
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.name strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.short {
+  display: none;
+}
+
+/* Hairline minute grid, drawn as a repeating 1px line at each tick. */
+.track {
+  position: relative;
+  height: 24px;
+  background-image: linear-gradient(to right, var(--rule-2) 1px, transparent 1px);
+  background-size: var(--grid) 100%;
+  background-repeat: repeat-x;
+}
+
+.voice {
+  position: absolute;
+  top: 7px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--pencil);
+  cursor: pointer;
+  animation: fadeIn 420ms ease-out both;
+}
+
+.voice:hover {
+  background: var(--ink-2);
+}
+
+.agentLane {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-2);
+}
+
+.agentTrack {
+  height: 38px;
+}
+
+.spoke,
+.ring,
+.chat {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+/* A 24px hit area around every agent mark. */
+.spoke::before,
+.ring::before,
+.chat::before {
+  content: "";
+  position: absolute;
+  inset: -8px -9px;
+}
+
+.spoke {
+  top: 7px;
+  height: 24px;
+  border-radius: 3px;
+  background: var(--onair);
+  box-shadow: 0 0 0 2px var(--sheet);
+  transform-origin: 50% 100%;
+  animation: lampOn 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(360ms + var(--i, 0) * 150ms);
+  z-index: 2;
+}
+
+.spoke:hover {
+  background: #b8260f;
+}
+
+/* Drawn above the on-air blocks, with a surface ring, because a held-back moment
+   often comes seconds after Aloy-bot finished speaking. */
+.ring {
+  top: 13px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: var(--sheet);
+  box-shadow: inset 0 0 0 2px var(--onair), 0 0 0 2px var(--sheet);
+  animation: fadeIn 400ms ease-out both;
+  animation-delay: 900ms;
+  z-index: 3;
+}
+
+.chat {
+  top: 15px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 2px;
+  background: var(--onair);
+  box-shadow: 0 0 0 2px var(--sheet);
+  rotate: 45deg;
+  z-index: 1;
+}
+
+.spoke:focus-visible,
+.ring:focus-visible,
+.chat:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+/* Tooltip */
+.tip {
+  position: absolute;
+  z-index: 10;
+  width: max-content;
+  max-width: min(360px, 80vw);
+  translate: -50% calc(-100% - 10px);
+  padding: 10px 12px 11px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--sheet);
+  box-shadow: 0 10px 24px -12px rgb(27 33 55 / 0.6);
+  pointer-events: none;
+}
+
+.tipHead {
+  font-size: var(--t-12);
+  color: #c9cedb;
+}
+
+.tipHead strong {
+  color: var(--sheet);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.tipText {
+  margin-top: 4px;
+  font-size: var(--t-14);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tipNote {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgb(255 255 255 / 0.16);
+  font-size: var(--t-12);
+  color: #dfe3ec;
+}
+
+/* Caption and key */
+.caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px 28px;
+  margin-top: 16px;
+  padding-left: calc(var(--label-w) + 16px);
+}
+
+.summary {
+  font-size: var(--t-15);
+  color: var(--ink);
+  max-width: 46rem;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: var(--t-12);
+  color: var(--ink-2);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.keyVoice,
+.keySpoke,
+.keyRing,
+.keyChat {
+  display: inline-block;
+  flex: none;
+}
+
+.keyVoice {
+  width: 16px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--pencil);
+}
+
+.keySpoke {
+  width: 8px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--onair);
+}
+
+.keyRing {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--onair);
+}
+
+.keyChat {
+  width: 7px;
+  height: 7px;
+  border-radius: 1.5px;
+  background: var(--onair);
+  rotate: 45deg;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The one orchestrated moment: each time Aloy-bot spoke lights up in turn. */
+@keyframes lampOn {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.2);
+  }
+  55% {
+    opacity: 1;
+    box-shadow: 0 0 0 2px var(--sheet), 0 0 0 7px rgb(212 50 31 / 0.22);
+  }
+  100% {
+    transform: none;
+    box-shadow: 0 0 0 2px var(--sheet);
+  }
+}
+
+@media (max-width: 760px) {
+  .score {
+    padding: 18px 16px 16px;
+  }
+
+  .plot {
+    --label-w: 78px;
+  }
+
+  .axis,
+  .lane {
+    column-gap: 10px;
+  }
+
+  .name {
+    font-size: var(--t-12);
+    gap: 6px;
+  }
+
+  /* Half the tick labels on narrow screens, so clock times don't collide. */
+  .tick:nth-child(even) {
+    display: none;
+  }
+
+  .full {
+    display: none;
+  }
+
+  .short {
+    display: inline;
+  }
+
+  .caption {
+    padding-left: 0;
+  }
+}
