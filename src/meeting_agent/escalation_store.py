@@ -19,6 +19,9 @@ class EscalationStore:
                     text TEXT NOT NULL,created_at TEXT NOT NULL,state TEXT NOT NULL,error TEXT
                 );
             ''')
+            columns={r[1] for r in db.execute('PRAGMA table_info(escalation_outbox)')}
+            if 'sent_segments' not in columns:
+                db.execute('ALTER TABLE escalation_outbox ADD COLUMN sent_segments INTEGER NOT NULL DEFAULT 0')
 
     def all(self,sql,args=()):
         with self.repository._connect() as db: return [dict(row) for row in db.execute(sql,args).fetchall()]

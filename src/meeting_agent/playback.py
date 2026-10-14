@@ -24,15 +24,21 @@ class RecallPlayback:
         row=self.recall.store.one('SELECT muted FROM meeting_controls WHERE session_id=?',(sid,))
         return bool(row and row['muted'])
 
+    def available(self,sid):
+        pending=self.recall.store.one("SELECT COUNT(*) AS n FROM recall_audio WHERE session_id=? AND expires>? AND state IN ('queued','playing')",(sid,time.time()))['n']
+        return pending<2
+
     async def enqueue(self,sid,text,key):
         if not await self.is_live(sid) or self.muted(sid):
             raise HTTPException(409,'Meeting is not live or speech is muted')
         existing=self.recall.store.one('SELECT id FROM recall_audio WHERE id=?',(key,))
         if existing: return key
+        if not self.available(sid): raise HTTPException(409,'Reply queue is full')
         started=time.perf_counter()
         audio=await self.recall.voice.generate(text)
         if not await self.is_live(sid) or self.muted(sid):
             raise HTTPException(409,'Meeting ended or speech was muted before playback')
+        if not self.available(sid): raise HTTPException(409,'Reply queue is full')
         self.recall.store.add_audio(sid,text,audio,key)
         return key
 

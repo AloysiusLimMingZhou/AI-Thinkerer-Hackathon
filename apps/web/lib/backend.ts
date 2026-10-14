@@ -1,5 +1,5 @@
 import "server-only";
-import type { AgentDecision, BackendEvent, Bot, ContextNote, Health, Minutes, RecallStatus, Session, TranscriptEntry, UnansweredQuestion } from "./api-types";
+import type { AgentDecision, BackendEvent, Bot, ContextNote, DiscordStatus, Health, Minutes, RecallStatus, Session, TranscriptEntry, UnansweredQuestion } from "./api-types";
 
 /**
  * Server-side client for the Alloy backend, per docs/BACKEND_HANDOFF.md:
@@ -85,6 +85,7 @@ async function maybe<T>(path: string): Promise<T | null> {
 }
 
 export const backend = {
+  discordStatus: () => call<DiscordStatus>("/discord/status"),
   questions: (id: string) => call<UnansweredQuestion[]>(`/sessions/${encodeURIComponent(id)}/questions`),
   knowledge: (id: string) => call<{ id: string; title: string; source: string; preview: string; filename: string | null; created_at: string }[]>(`/sessions/${encodeURIComponent(id)}/knowledge`),
   addKnowledge: (id: string, body: FormData) => call<{ sources: unknown[]; duplicates: string[] }>(`/sessions/${encodeURIComponent(id)}/knowledge`, { method: "POST", body }),

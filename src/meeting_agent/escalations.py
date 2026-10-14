@@ -3,6 +3,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import uuid4
 from .escalation_store import EscalationStore
 from .models import AgentDecision
@@ -30,6 +31,7 @@ class EscalationService:
         self.repository,self.meeting,self.notifier=repository,meeting,notifier
         self.store=EscalationStore(repository)
         self.clock=time.time
+        self.settings=None
 
     def _event(self,question):
         self.repository.record_event(question['session_id'],'question.updated',question)
@@ -132,19 +134,94 @@ class EscalationService:
                 self.store.execute("UPDATE unanswered_questions SET state='delivery_failed',error=? WHERE id=?",(message,question['id']))
         else:
             with self.repository._connect() as db:
-                db.execute("UPDATE unanswered_questions SET state='awaiting_owner',parent_message_id=?,thread_id=?,error=NULL WHERE id=?",(ref.parent_message_id,ref.thread_id,question['id']))
+                db.execute("UPDATE unanswered_questions SET state=CASE WHEN state='answered' THEN state ELSE 'awaiting_owner' END,parent_message_id=?,thread_id=?,error=NULL WHERE id=?",(ref.parent_message_id,ref.thread_id,question['id']))
                 db.execute("UPDATE escalation_outbox SET state='sent',parent_message_id=?,thread_id=?,error=NULL WHERE id=?",(ref.parent_message_id,ref.thread_id,job['id']))
         self._event(self.store.one('SELECT * FROM unanswered_questions WHERE id=?',(question['id'],)))
         return True
 
+    async def _ack(self,question,text,key):
+        if not hasattr(self.notifier,'acknowledge'): return
+        try: await self.notifier.acknowledge(question,text,key)
+        except Exception:
+            self.repository.record_event(question['session_id'],'discord.ack_failed',{'question_id':question['id'],'reply_id':key})
+
+    async def receive_owner_reply(self,reply):
+        settings=self.settings
+        if not settings or reply.guild_id!=settings.discord_guild_id or reply.author_id!=settings.discord_owner_user_id:
+            return 'ignored'
+        if reply.is_bot or reply.is_webhook or reply.is_edit or reply.has_attachments or not reply.text.strip():
+            return 'ignored'
+        question=self.store.one('SELECT * FROM unanswered_questions WHERE thread_id=?',(reply.channel_id,))
+        if not question and reply.channel_id==settings.discord_escalation_channel_id and reply.parent_message_id:
+            question=self.store.one('SELECT * FROM unanswered_questions WHERE parent_message_id=?',(reply.parent_message_id,))
+        if not question: return 'ignored'
+        sid=question['session_id']
+        async with self.meeting.locks.setdefault(sid,asyncio.Lock()):
+            previous=self.store.one('SELECT * FROM owner_replies WHERE id=?',(reply.message_id,))
+            if previous: return 'queued' if previous['state'] in {'pending','processing','queued'} else previous['state']
+            if len(reply.text)>2000:
+                self.store.execute("INSERT INTO owner_replies VALUES(?,?,?,?,?,NULL)",(reply.message_id,question['id'],reply.text,reply.created_at.isoformat(),'too_long'))
+                await self._ack(question,'Please shorten your answer to 2,000 characters or fewer; it has not been spoken.',reply.message_id+':long')
+                return 'too_long'
+            now=datetime.now(UTC).isoformat()
+            from .knowledge import MAX_MEETING_CHARS
+            with self.repository._connect() as db:
+                current=db.execute('SELECT COALESCE(SUM(length(content)),0) FROM knowledge_sources WHERE session_id=?',(sid,)).fetchone()[0]
+                full=current+len(reply.text)>MAX_MEETING_CHARS
+                db.execute('INSERT INTO owner_replies VALUES(?,?,?,?,?,?)',(reply.message_id,question['id'],reply.text,reply.created_at.isoformat(),'needs_attention' if full else 'pending','Knowledge limit reached; answer saved but not spoken' if full else None))
+                if not full:
+                    self.meeting.knowledge._store(db,sid,'discord:'+reply.message_id,'discord_owner','Owner reply '+reply.message_id,None,[(f'Discord message {reply.message_id}',reply.text)],now)
+                    db.execute('INSERT INTO qa_log VALUES(?,?,?,?,?,?)',('discord:'+reply.message_id,sid,question['question'],reply.text,'[]',now))
+                    db.execute("UPDATE unanswered_questions SET state='answered',error=NULL WHERE id=?",(question['id'],))
+            self._event(self.store.one('SELECT * FROM unanswered_questions WHERE id=?',(question['id'],)))
+            self.repository.record_event(sid,'owner.reply',{'id':reply.message_id,'question_id':question['id'],'text':reply.text,'state':'needs_attention' if full else 'pending'})
+            if full: return 'needs_attention'
+            return await self._relay(reply.message_id,question)
+
+    async def _relay(self,message_id,question):
+        sid=question['session_id']
+        reply=self.store.one('SELECT * FROM owner_replies WHERE id=?',(message_id,))
+        if reply['state']!='pending': return reply['state']
+        if not await self.meeting.playback.is_live(sid):
+            self.store.execute("UPDATE owner_replies SET state='saved_after_end' WHERE id=?",(message_id,))
+            await self._ack(question,'Saved in the meeting notes; not spoken because the meeting has ended.',message_id+':ended')
+            if getattr(self.meeting,'minutes',None): self.meeting.minutes.schedule(sid)
+            return 'saved_after_end'
+        if getattr(self.meeting.playback,'muted',lambda _:False)(sid) or not getattr(self.meeting.playback,'available',lambda _:True)(sid):
+            return 'queued'
+        self.store.execute("UPDATE owner_replies SET state='processing' WHERE id=? AND state='pending'",(message_id,))
+        session=self.repository.get_session(sid)
+        try:
+            await self.meeting.queue_speech(sid,f'{session.owner_name} says: {reply["text"]}','discord:'+message_id)
+        except Exception:
+            live=await self.meeting.playback.is_live(sid)
+            state='needs_attention' if live else 'saved_after_end'
+            self.store.execute('UPDATE owner_replies SET state=?,error=? WHERE id=?',(state,'Playback did not complete; do not replay without checking',message_id))
+            if not live:
+                await self._ack(question,'Saved in the meeting notes; not spoken because the meeting has ended.',message_id+':ended')
+            return state
+        self.store.execute("UPDATE owner_replies SET state='queued' WHERE id=?",(message_id,))
+        self.repository.record_event(sid,'owner.relay_queued',{'id':message_id,'question_id':question['id']})
+        return 'queued'
+
+    async def drain_replies(self):
+        replies=self.store.all("SELECT r.id,r.question_id,q.session_id FROM owner_replies r JOIN unanswered_questions q ON q.id=r.question_id WHERE r.state='pending' ORDER BY r.created_at LIMIT 4")
+        for reply in replies:
+            question=self.store.one('SELECT * FROM unanswered_questions WHERE id=?',(reply['question_id'],))
+            async with self.meeting.locks.setdefault(question['session_id'],asyncio.Lock()):
+                await self._relay(reply['id'],question)
+
     def recover(self):
         self.store.execute("UPDATE escalation_outbox SET state='needs_attention',error='Interrupted send; reconcile before retrying' WHERE state='processing'")
         self.store.execute("UPDATE unanswered_questions SET state='delivery_failed',error='Interrupted send; reconcile before retrying' WHERE state='escalation_queued' AND id IN (SELECT question_id FROM escalation_outbox WHERE state='needs_attention')")
+        self.store.execute("UPDATE owner_replies SET state='needs_attention',error='Interrupted playback; check meeting before replay' WHERE state='processing'")
+        self.store.execute("UPDATE speech_intents SET state='needs_attention' WHERE state='processing'")
 
     async def worker(self):
         self.recover()
         while True:
             try:
+                await self.drain_replies()
                 if not await self.run_once(): await asyncio.sleep(0.25)
             except asyncio.CancelledError: raise
             except Exception: await asyncio.sleep(1)

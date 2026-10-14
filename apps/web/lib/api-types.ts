@@ -87,6 +87,13 @@ export interface Health {
   elevenlabs_configured: boolean;
 }
 
+export interface DiscordStatus {
+  configured: boolean;
+  missing: string[];
+  gateway: string;
+  voice_attendance_available: boolean;
+}
+
 export interface UnansweredQuestion {
   id: string;
   question: string;

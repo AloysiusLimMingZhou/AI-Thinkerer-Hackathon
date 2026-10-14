@@ -21,6 +21,8 @@ from fastapi.responses import JSONResponse, Response
 
 from .config import Settings
 from .escalations import EscalationService
+from .discord_client import DiscordTransport
+from .discord_api import discord_router
 from .knowledge import KnowledgeService
 from .knowledge_api import knowledge_router
 from .integrations import (
@@ -86,20 +88,27 @@ def create_app(
     recall.meeting = meeting
     escalations=EscalationService(repository,meeting)
     meeting.escalations=escalations
+    discord=DiscordTransport(settings,escalations.store)
+    escalations.notifier=discord
+    escalations.settings=settings
 
     @asynccontextmanager
     async def lifespan(app):
         worker = asyncio.create_task(recall.worker())
         escalation_worker = asyncio.create_task(escalations.worker())
+        gateway = asyncio.create_task(discord.gateway(escalations))
         try:
             yield
         finally:
             worker.cancel()
             escalation_worker.cancel()
+            gateway.cancel()
             with suppress(asyncio.CancelledError):
                 await worker
             with suppress(asyncio.CancelledError):
                 await escalation_worker
+            with suppress(asyncio.CancelledError):
+                await gateway
 
     app = FastAPI(
         title="Meeting Agent API",
@@ -112,6 +121,8 @@ def create_app(
     app.state.meeting = meeting
     app.state.playback = playback
     app.state.escalations = escalations
+    app.state.discord = discord
+    app.include_router(discord_router(discord))
     app.include_router(knowledge_router(knowledge))
 
     @app.middleware("http")

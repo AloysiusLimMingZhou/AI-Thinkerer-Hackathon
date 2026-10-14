@@ -64,6 +64,7 @@ export default async function HomePage() {
   }
 
   const rows = await Promise.all(sessions.slice(0, RECENT).map(loadRow));
+  const discord = await backend.discordStatus().catch(() => null);
   const live = rows.find((r) => inCall(r.bot) || r.session.status === "active");
   const pending = rows.some((r) => isLive(r.session, r.bot));
   const agent = live?.session.agent_name ?? sessions[0]?.agent_name ?? DEFAULT_AGENT;
@@ -150,7 +151,7 @@ export default async function HomePage() {
             </h2>
             <SendForm ready={status.configured} />
           </section>
-          <Readiness status={status} health={health} />
+          <Readiness status={status} health={health} discord={discord} />
         </aside>
       </div>
     </main>

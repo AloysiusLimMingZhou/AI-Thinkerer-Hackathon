@@ -30,6 +30,10 @@ class Settings:
     public_api_base_url: str | None = None
     recall_media_base_url: str | None = None
     recall_calendar_callback_uri: str | None = None
+    discord_bot_token: str | None = None
+    discord_guild_id: str | None = None
+    discord_escalation_channel_id: str | None = None
+    discord_owner_user_id: str | None = None
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -40,6 +44,10 @@ class Settings:
             if origin.strip()
         )
         return cls(
+            discord_bot_token=os.getenv('DISCORD_BOT_TOKEN') or None,
+            discord_guild_id=os.getenv('DISCORD_GUILD_ID') or None,
+            discord_escalation_channel_id=os.getenv('DISCORD_ESCALATION_CHANNEL_ID') or None,
+            discord_owner_user_id=os.getenv('DISCORD_OWNER_USER_ID') or None,
             recall_media_base_url=(os.getenv("RECALL_MEDIA_BASE_URL") or "").rstrip("/")
             or None,
             backend_api_token=os.getenv("BACKEND_API_TOKEN") or None,
