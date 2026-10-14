@@ -45,14 +45,14 @@ export function SendForm({ ready }: { ready: boolean }) {
           onChange={(e) => update("notes", e.target.value)}
           rows={5}
           maxLength={100000}
-          placeholder="Your update, decisions already made, facts people might ask about. It answers only from these notes and what’s said in the call."
+          placeholder="Your update, decisions already made, facts people might ask about. Factual answers use the knowledge you supply for this meeting."
         />
       </label>
 
       <label className={styles.field}>
         <span className={styles.label}>Knowledge files <span className={styles.optional}>Optional</span></span>
         <input name="files" type="file" multiple accept=".txt,.md,.pdf,.docx" />
-        <span className={styles.hint}>Text, Markdown, text PDFs or Word documents. Up to 5 files, 10 MB each and 20 MB combined.</span>
+        <span className={styles.hint}>Text, Markdown, text PDFs or Word documents. Up to 5 files, 10 MiB each and 20 MiB combined.</span>
       </label>
 
       <div className={styles.pair}>

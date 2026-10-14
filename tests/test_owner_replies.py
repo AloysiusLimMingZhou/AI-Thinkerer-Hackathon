@@ -82,3 +82,12 @@ async def test_full_audio_queue_keeps_reply_durable_until_capacity(tmp_path):
     h.playback.available=lambda _:True
     await h.escalations.drain_replies()
     assert len(h.playback.queued)==1
+
+
+@pytest.mark.asyncio
+async def test_owner_playback_failure_surfaces_attention_on_its_question(tmp_path):
+    h=await reply_harness(tmp_path)
+    await h.escalations.receive_owner_reply(h.reply)
+    await h.service.playback_failed(h.sid,'discord:'+h.reply.message_id)
+    assert h.escalations.store.one('SELECT * FROM owner_replies')['state']=='needs_attention'
+    assert 'playback' in h.escalations.questions(h.sid)[0]['error'].lower()

@@ -331,6 +331,7 @@ def test_calendar_opt_in_sync_reschedule_disable(tmp_path):
         f"/sessions/{sid}/context",
         json={"notes": [{"title": "Context", "content": "Ship Tuesday"}]},
     )
+    assert client.post(f'/sessions/{sid}/knowledge',files={'files':('long.md',('Introductory text. '*200+'Finalword: the launch is Friday.').encode(),'text/markdown')}).status_code==201
     assert (
         client.post(
             "/recall/calendars",
@@ -353,6 +354,8 @@ def test_calendar_opt_in_sync_reschedule_disable(tmp_path):
         service.repository.get_context(mapped["session_id"])[0].content
         == "Ship Tuesday"
     )
+    copied=service.meeting.knowledge.search(mapped['session_id'],'Finalword')
+    assert copied and copied[0].filename=='long.md'
     assert len([r for r in requests if r.method == "POST"]) == 1
     asyncio.run(service.sync_calendar(CAL_ID))
     assert len([r for r in requests if r.method == "POST"]) == 1

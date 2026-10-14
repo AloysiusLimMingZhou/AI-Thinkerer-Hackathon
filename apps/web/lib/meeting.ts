@@ -280,7 +280,20 @@ export function activityFrom(events: BackendEvent[], agent: string, stateLabel: 
       }
       case "agent.decision":
         if (p.action === "answer") out.push({ ...base, title: `${agent} answered`, detail: reasonText(String(p.reason ?? ""), agent), tone: "live" });
+        else if (p.action === "defer") out.push({ ...base, title: `${agent} couldn’t answer from its knowledge`, detail: "Asked whether the question is urgent.", tone: "waiting" });
         else out.push({ ...base, title: "Stayed quiet", detail: reasonText(String(p.reason ?? ""), agent), tone: "quiet" });
+        break;
+      case "question.updated":
+        out.push({ ...base, title: "Question status updated", detail: `${String(p.state ?? "").replaceAll("_", " ")}${p.error ? `: ${String(p.error)}` : ""}`, tone: p.error ? "problem" : "waiting" });
+        break;
+      case "minutes.processing":
+        out.push({ ...base, title: "Processing meeting notes", tone: "waiting" });
+        break;
+      case "minutes.failed":
+        out.push({ ...base, title: "Minutes need attention", detail: String(p.error ?? "Retry minutes after checking the backend."), tone: "problem" });
+        break;
+      case "owner.reply":
+        out.push({ ...base, title: "Saved an owner reply from Discord", detail: String(p.text ?? ""), tone: "quiet" });
         break;
       case "voice.queued":
         out.push({ ...base, title: "Reply queued to play in the meeting", tone: "waiting" });

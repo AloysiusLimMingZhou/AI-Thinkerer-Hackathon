@@ -716,17 +716,7 @@ class RecallService:
                     meeting_url=event["meeting_url"],
                 )
             )
-            notes = self.repository.get_context(template.id)
-            if notes:
-                self.repository.add_context(
-                    session.id,
-                    [
-                        ContextNoteCreate(
-                            source=n.source, title=n.title, content=n.content
-                        )
-                        for n in notes
-                    ],
-                )
+            self.meeting.knowledge.copy_into(template.id,session.id)
             self.store.execute(
                 "UPDATE recall_calendar_events SET session_id=? WHERE id=?",
                 (session.id, event_id),

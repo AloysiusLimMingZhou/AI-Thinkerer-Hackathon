@@ -1,3 +1,25 @@
+# Current implementation assessment — 15 October 2026
+
+The approved foundation (steps 1–3) is implemented on the feature branch: Google Meet-only dispatch, Slack/Microsoft/Zoom removal, meeting text/file knowledge, structured supported/unknown answers with evidence, shared ingestion/playback, urgency-confirmed Discord threads, configured-owner spoken reply relay, and whole-meeting minutes with finalization status.
+
+Verification uses real local extraction/SQLite and fake external providers. Backend tests, frontend tests/typecheck and production build pass; browser checks cover mixed upload rejection/retry and processing after call departure. The final delivery records the exact current test count. No live meeting, provider billing, Discord ping or OAuth authorization was performed in this implementation phase.
+
+Remaining specs:
+
+| Item | Current status |
+| --- | --- |
+| Discord voice attendance, `/join #channel`, voice receive/STT/output and departure controls | Next transport milestone; not implemented |
+| Live Google Meet admission, public signed webhooks and audible playback | Code exists; operator credentials/private call verification still needed |
+| Real Discord Gateway/permissions/owner relay | Implemented; live server configuration/acceptance still needed |
+| Final custom product brand | Neutral Meeting Agent; session names remain configurable |
+| Full-duplex audio, barge-in and 2.5-second audible response target | Incomplete/unverified; output is sequential MP3 |
+| Google Drive import and connector refresh-token renewal | Incomplete |
+| Production user auth, retention, content encryption at rest, pagination and horizontal scaling | Incomplete; one trusted operator/process |
+| Historical browser/PulseAudio/simulator architecture | Archived plan, superseded by Recall for Meet |
+
+The sections below are the original **13–14 October baseline**, retained to show the codebase gaps before this work. Their present-tense statements and old verification limits are historical. Current behavior/configuration is documented in README, BACKEND_HANDOFF.md and DISCORD_SETUP.md.
+
+---
 # Project assessment before the personal rebrand and Discord extension
 
 Assessment date: 13 October 2026, Asia/Kuala_Lumpur. Reviewed checkout: `8b0b4c6`.

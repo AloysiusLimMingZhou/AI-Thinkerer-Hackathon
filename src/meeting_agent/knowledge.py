@@ -190,6 +190,24 @@ class KnowledgeService:
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return [chunk for _, chunk in scored[:min(limit,8)]]
 
+    def copy_into(self,source_session,target_session):
+        """Snapshot full normalized template knowledge, retaining original locators."""
+        self.sync_legacy(source_session)
+        with self.repository._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            total=db.execute('SELECT COALESCE(SUM(length(content)),0) FROM knowledge_sources WHERE session_id=?',(target_session,)).fetchone()[0]
+            for row in db.execute('SELECT * FROM knowledge_sources WHERE session_id=? ORDER BY created_at,id',(source_session,)).fetchall():
+                if db.execute('SELECT id FROM knowledge_sources WHERE session_id=? AND content_hash=?',(target_session,row['content_hash'])).fetchone(): continue
+                if total+len(row['content'])>MAX_MEETING_CHARS: raise ValueError('Template knowledge exceeds meeting limit')
+                source_id=str(uuid4())
+                db.execute('INSERT INTO knowledge_sources VALUES(?,?,?,?,?,?,?,?)',(source_id,target_session,row['source'],row['title'],row['filename'],row['content_hash'],row['content'],row['created_at']))
+                for chunk in db.execute('SELECT * FROM knowledge_chunks WHERE source_id=?',(row['id'],)).fetchall():
+                    chunk_id=hashlib.sha256((source_id+chunk['id']).encode()).hexdigest()
+                    db.execute('INSERT INTO knowledge_chunks VALUES(?,?,?,?)',(chunk_id,source_id,chunk['text'],chunk['locator']))
+                preview=row['content'] if not row['filename'] and len(row['content'])<=100000 else row['content'][:2000]
+                db.execute('INSERT INTO context_notes VALUES(?,?,?,?,?,?)',(source_id,target_session,row['source'],row['title'],preview,row['created_at']))
+                total+=len(row['content'])
+
     async def ingest(self, session_id, text='', files=()):
         if len(files)>5 or len(text)>100_000:
             raise HTTPException(413, 'Use at most five files and 100,000 text characters')

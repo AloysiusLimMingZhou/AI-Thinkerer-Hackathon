@@ -48,7 +48,7 @@ export function AddNoteForm({ action, agent }: { action: Action; agent: string }
       <label className={styles.field}>
         <span>Knowledge files</span>
         <input type="file" name="files" multiple accept=".txt,.md,.pdf,.docx" />
-        <span>Up to 5 files, 10 MB each and 20 MB combined. Text PDFs; scanned documents need OCR first.</span>
+        <span>Up to 5 files, 10 MiB each and 20 MiB combined. Text PDFs; scanned documents need OCR first.</span>
       </label>
       <button type="submit" className="btn btn-quiet" disabled={pending}>
         {pending ? "Saving…" : "Add note"}
