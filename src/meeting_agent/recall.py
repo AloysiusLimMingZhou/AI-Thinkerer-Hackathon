@@ -340,7 +340,10 @@ class RecallService:
                             spoken_at=stamp,
                         )
                     )
-        return entries
+        unique={}
+        for entry in sorted(entries,key=lambda t:(t.spoken_at,t.id)):
+            unique.setdefault((entry.spoken_at,entry.speaker,entry.text),entry)
+        return list(unique.values())
 
     async def capture_final_transcript(self, session_id, data):
         transcript_id = str(UUID(data["transcript"]["id"]))
@@ -497,6 +500,8 @@ class RecallService:
                         "UPDATE recall_audio SET state='expired',audio=X'' WHERE session_id=? AND state IN ('queued','playing')",
                         (session_id,),
                     )
+                    if state in {'call_ended','done','fatal'} and not self.final_transcript(session_id):
+                        self.meeting.minutes.wait_for_transcript(session_id)
         else:
             self.repository.record_event(
                 session_id,
@@ -508,26 +513,9 @@ class RecallService:
                 },
             )
             if event == "transcript.done":
-                transcript_id = data.get("transcript", {}).get("id")
-                if self.store.one(
-                    "SELECT id FROM recall_transcripts WHERE id=?", (transcript_id,)
-                ) and self.repository.get_minutes(session_id):
-                    return
                 await self.capture_final_transcript(session_id, data)
                 entries = self.final_transcript(session_id)
-                if not entries:
-                    return
-                session = self.repository.get_session(session_id)
-                content = await self.brain.generate_minutes(
-                    session,
-                    entries,
-                    self.repository.get_context(session_id),
-                    self.repository.get_qa_log(session_id),
-                )
-                minutes = self.repository.save_minutes(session_id, content)
-                self.repository.record_event(
-                    session_id, "minutes.generated", minutes.model_dump(mode="json")
-                )
+                await self.meeting.minutes.finalize(session_id,entries)
 
     async def process_transcript(self, job_id, session_id, data):
         from .meeting_models import MeetingUtterance

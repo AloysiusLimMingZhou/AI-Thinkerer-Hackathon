@@ -1,6 +1,6 @@
 import Markdown from "react-markdown";
 import type { ActionState } from "@/app/actions";
-import type { ContextNote, Minutes, UnansweredQuestion } from "@/lib/api-types";
+import type { ContextNote, Finalization, Minutes, UnansweredQuestion } from "@/lib/api-types";
 import { clock, plural, shortDay } from "@/lib/format";
 import { reasonText, type ActivityItem, type AnswerItem, type SilenceItem, type VoiceOutcome } from "@/lib/meeting";
 import { AddNoteForm, RehearseForm, WriteMinutesButton } from "./Forms";
@@ -13,29 +13,36 @@ type Action = (prev: ActionState, form: FormData) => Promise<ActionState>;
 
 export function MinutesPanel({
   minutes,
+  finalization,
   agent,
   hasTranscript,
   write,
 }: {
   minutes: Minutes | null;
+  finalization: Finalization;
   agent: string;
   hasTranscript: boolean;
   write: (prev: ActionState) => Promise<ActionState>;
 }) {
+  const status = finalization.state === "processing"
+    ? <p role="status">Processing meeting notes. This page will update when they are ready.</p>
+    : finalization.state === "failed" ? <p role="alert">{finalization.error || "Minutes generation failed. Retry below."}</p> : null;
   if (!minutes) {
     return (
       <div className={styles.empty}>
+        {status}
         <h3>No minutes yet</h3>
         <p>
           {agent} writes them automatically once Recall finishes the transcript after the call.
           {hasTranscript ? " You can also write them now from what’s been transcribed so far." : " Nothing has been transcribed yet."}
         </p>
-        {hasTranscript && <WriteMinutesButton action={write} label="Write minutes now" />}
+        {hasTranscript && finalization.state !== "processing" && <WriteMinutesButton action={write} label="Write minutes now" />}
       </div>
     );
   }
   return (
     <div>
+      {status}
       <div className={styles.minutes}>
         <Markdown>{minutes.content}</Markdown>
       </div>

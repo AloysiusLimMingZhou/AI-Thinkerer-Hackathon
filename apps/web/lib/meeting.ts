@@ -1,4 +1,4 @@
-import type { BackendEvent, Bot, Citation, ContextNote, Session, TranscriptEntry } from "./api-types";
+import type { BackendEvent, Bot, Citation, ContextNote, Finalization, Session, TranscriptEntry } from "./api-types";
 
 /**
  * Turns what the backend stores (sessions, bot state, transcript, event log) into what
@@ -34,6 +34,10 @@ export function inCall(bot: Bot | null): boolean {
 export function isLive(session: Session, bot: Bot | null): boolean {
   if (bot) return !isFinal(bot);
   return session.status === "active";
+}
+
+export function shouldRefresh(session: Session, bot: Bot | null, finalization: Finalization): boolean {
+  return isLive(session, bot) || finalization.state === "processing";
 }
 
 export function botState(bot: Bot | null, agent: string, when?: string): BotStateInfo {

@@ -25,13 +25,7 @@ class FakeBrain:
         return BrainAnswer(kind="supported", text="The refunds migration is scheduled for Tuesday.",
             evidence=[AnswerEvidence(chunk_id=context[0].id,quote=context[0].text)] if context else [])
 
-    async def generate_minutes(
-        self,
-        session: SessionView,
-        transcript: list[TranscriptEntry],
-        context: list[ContextNoteView],
-        qa_log: list[dict[str, object]],
-    ) -> str:
+    async def summarize_minutes(self,session,material,*,synthesis):
         return "# Summary\n\nThe team reviewed the refunds migration."
 
 

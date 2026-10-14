@@ -23,6 +23,7 @@ from .config import Settings
 from .escalations import EscalationService
 from .discord_client import DiscordTransport
 from .discord_api import discord_router
+from .minutes import MinutesService
 from .knowledge import KnowledgeService
 from .knowledge_api import knowledge_router
 from .integrations import (
@@ -91,24 +92,31 @@ def create_app(
     discord=DiscordTransport(settings,escalations.store)
     escalations.notifier=discord
     escalations.settings=settings
+    minutes_service=MinutesService(repository,brain,escalations)
+    minutes_service.transcript=lambda sid: recall.final_transcript(sid) or repository.get_transcript(sid)
+    meeting.minutes=minutes_service
 
     @asynccontextmanager
     async def lifespan(app):
         worker = asyncio.create_task(recall.worker())
         escalation_worker = asyncio.create_task(escalations.worker())
         gateway = asyncio.create_task(discord.gateway(escalations))
+        minutes_worker = asyncio.create_task(minutes_service.worker())
         try:
             yield
         finally:
             worker.cancel()
             escalation_worker.cancel()
             gateway.cancel()
+            minutes_worker.cancel()
             with suppress(asyncio.CancelledError):
                 await worker
             with suppress(asyncio.CancelledError):
                 await escalation_worker
             with suppress(asyncio.CancelledError):
                 await gateway
+            with suppress(asyncio.CancelledError):
+                await minutes_worker
 
     app = FastAPI(
         title="Meeting Agent API",
@@ -122,6 +130,7 @@ def create_app(
     app.state.playback = playback
     app.state.escalations = escalations
     app.state.discord = discord
+    app.state.minutes = minutes_service
     app.include_router(discord_router(discord))
     app.include_router(knowledge_router(knowledge))
 
@@ -416,26 +425,19 @@ def create_app(
         tags=["minutes"],
     )
     async def generate_minutes(session_id: str) -> MinutesView:
-        session = require_session(session_id)
+        require_session(session_id)
         transcript_entries = recall.final_transcript(
             session_id
         ) or repository.get_transcript(session_id)
-        if not transcript_entries:
-            raise HTTPException(status_code=409, detail="Cannot generate empty minutes")
         try:
-            content = await brain.generate_minutes(
-                session,
-                transcript_entries,
-                repository.get_context(session_id),
-                repository.get_qa_log(session_id),
-            )
+            return await minutes_service.finalize(session_id,transcript_entries)
         except IntegrationUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        minutes = repository.save_minutes(session_id, content)
-        repository.record_event(
-            session_id, "minutes.generated", minutes.model_dump(mode="json")
-        )
-        return minutes
+
+    @app.get('/sessions/{session_id}/finalization')
+    async def finalization_status(session_id: str):
+        require_session(session_id)
+        return minutes_service.status(session_id)
 
     @app.get(
         "/sessions/{session_id}/minutes",

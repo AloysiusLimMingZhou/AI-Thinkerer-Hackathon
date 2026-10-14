@@ -94,6 +94,12 @@ export interface DiscordStatus {
   voice_attendance_available: boolean;
 }
 
+export interface Finalization {
+  session_id: string;
+  state: "idle" | "processing" | "ready" | "failed";
+  error: string | null;
+}
+
 export interface UnansweredQuestion {
   id: string;
   question: string;
