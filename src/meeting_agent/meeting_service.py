@@ -77,6 +77,13 @@ class MeetingService:
         self.repository.record_event(sid,'transcript.utterance',{**entry.model_dump(mode='json'),'participant_id':u.participant_id})
         history=self.repository.get_transcript(sid)
         qa=self.repository.get_qa_log(sid)
+        if self.escalations and not preview and u.is_final and not getattr(self.playback,'muted',lambda _:False)(sid) and await self.playback.is_live(sid) and (datetime.now(UTC)-u.received_at).total_seconds()<=30:
+            confirmation=self.escalations.handle_confirmation(sid,u)
+            if confirmation:
+                self.repository.add_qa(sid,u.text,confirmation.answer or '',[])
+                self._decision(sid,key,confirmation,entry.id)
+                await self.queue_speech(sid,confirmation.answer or '',key)
+                return confirmation
         approved,reason=conversation_gate(u.text,speaker=u.speaker,session=session,transcript=history,qa_log=qa,force_answer=u.force_answer)
         if not u.is_final and not u.force_answer:
             approved,reason=False,'waiting for final caption'
@@ -106,6 +113,8 @@ class MeetingService:
             answer,citations,action=UNKNOWN_ANSWER,[],'defer'
         self.repository.add_qa(sid,u.text,answer,citations)
         decision=AgentDecision(action=action,reason='knowledge unavailable' if action=='defer' else reason,answer=answer,citations=citations)
+        if action=='defer' and not preview and self.escalations:
+            self.escalations.open_question(sid,u,key,entry.id)
         self._decision(sid,key,decision,entry.id,round((time.perf_counter()-started)*1000))
         if not preview:
             if (datetime.now(UTC)-u.received_at).total_seconds()<=60:
@@ -129,6 +138,7 @@ class MeetingService:
         except Exception:
             with self.repository._connect() as db: db.execute("UPDATE speech_intents SET state='needs_attention' WHERE id=?",(key,))
             self.repository.record_event(sid,'voice.failed',{'id':key})
+            await self.playback_failed(sid,key)
             raise
         with self.repository._connect() as db: db.execute("UPDATE speech_intents SET state='queued' WHERE id=?",(key,))
         voice_ms=round((time.perf_counter()-started)*1000)

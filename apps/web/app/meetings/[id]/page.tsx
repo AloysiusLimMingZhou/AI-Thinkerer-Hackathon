@@ -51,13 +51,14 @@ interface Loaded {
   events: BackendEvent[];
   minutes: Minutes | null;
   knowledge: Awaited<ReturnType<typeof backend.knowledge>>;
+  questions: Awaited<ReturnType<typeof backend.questions>>;
 }
 
 async function load(id: string): Promise<Loaded | null> {
   const session = await backend.getSession(id);
   if (!session) return null;
-  const [bot, transcript, events, minutes, knowledge] = await Promise.all([backend.bot(id), backend.transcript(id), backend.events(id), backend.minutes(id), backend.knowledge(id)]);
-  return { session, bot, transcript, events, minutes, knowledge };
+  const [bot, transcript, events, minutes, knowledge, questions] = await Promise.all([backend.bot(id), backend.transcript(id), backend.events(id), backend.minutes(id), backend.knowledge(id), backend.questions(id)]);
+  return { session, bot, transcript, events, minutes, knowledge, questions };
 }
 
 export default async function MeetingPage({ params, searchParams }: Params) {
@@ -181,7 +182,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
             score={tl ? <MeetingScore key="score" data={scoreData(tl, agent)} /> : null}
             panels={{
               summary: <MinutesPanel key="summary" minutes={minutes} agent={agent} hasTranscript={transcript.length > 0} write={writeMinutes.bind(null, session.id)} />,
-              said: <AnswersPanel key="said" answers={answers} silences={silences} playbacks={manualPlaybacks(events)} agent={agent} />,
+              said: <AnswersPanel key="said" answers={answers} silences={silences} playbacks={manualPlaybacks(events)} questions={data.questions} agent={agent} />,
               transcript: (
                 <TranscriptPanel
                   key="transcript"

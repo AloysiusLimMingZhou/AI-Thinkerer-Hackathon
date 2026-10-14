@@ -86,3 +86,12 @@ export interface Health {
   openai_configured: boolean;
   elevenlabs_configured: boolean;
 }
+
+export interface UnansweredQuestion {
+  id: string;
+  question: string;
+  speaker: string;
+  state: string;
+  error: string | null;
+  thread_id: string | null;
+}

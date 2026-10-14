@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from .config import Settings
+from .escalations import EscalationService
 from .knowledge import KnowledgeService
 from .knowledge_api import knowledge_router
 from .integrations import (
@@ -83,16 +84,22 @@ def create_app(
     playback = RecallPlayback(recall)
     meeting = MeetingService(repository, brain, knowledge, playback)
     recall.meeting = meeting
+    escalations=EscalationService(repository,meeting)
+    meeting.escalations=escalations
 
     @asynccontextmanager
     async def lifespan(app):
         worker = asyncio.create_task(recall.worker())
+        escalation_worker = asyncio.create_task(escalations.worker())
         try:
             yield
         finally:
             worker.cancel()
+            escalation_worker.cancel()
             with suppress(asyncio.CancelledError):
                 await worker
+            with suppress(asyncio.CancelledError):
+                await escalation_worker
 
     app = FastAPI(
         title="Meeting Agent API",
@@ -104,6 +111,7 @@ def create_app(
     app.state.knowledge = knowledge
     app.state.meeting = meeting
     app.state.playback = playback
+    app.state.escalations = escalations
     app.include_router(knowledge_router(knowledge))
 
     @app.middleware("http")
@@ -185,6 +193,11 @@ def create_app(
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
         return session
+
+    @app.get('/sessions/{session_id}/questions',tags=['meeting'])
+    async def questions(session_id: str):
+        require_session(session_id)
+        return escalations.questions(session_id)
 
     @app.get("/health", response_model=HealthView, tags=["system"])
     async def health() -> HealthView:
