@@ -67,7 +67,7 @@ def validate_meeting_url(value):
     except ValueError:
         raise HTTPException(422, "Invalid meeting URL") from None
     host = parsed.hostname or ""
-    supported = ("meet.google.com", "zoom.us", "teams.microsoft.com", "teams.live.com")
+    supported = ("meet.google.com",)
     if (
         parsed.scheme != "https"
         or parsed.username
@@ -75,7 +75,7 @@ def validate_meeting_url(value):
         or port not in (None, 443)
         or not any(host == h or host.endswith("." + h) for h in supported)
     ):
-        raise HTTPException(422, "Use a Google Meet, Zoom, or Teams HTTPS meeting link")
+        raise HTTPException(422, "Use a Google Meet HTTPS meeting link")
     if not parsed.path or parsed.path == "/":
         raise HTTPException(
             422, "A meeting link, not the platform home page, is required"

@@ -90,8 +90,6 @@ export function platformOf(url: string | null): { name: string; host: string } |
   try {
     const host = new URL(url).hostname;
     if (host === "meet.google.com") return { name: "Google Meet", host };
-    if (host === "zoom.us" || host.endsWith(".zoom.us")) return { name: "Zoom", host };
-    if (host.startsWith("teams.")) return { name: "Microsoft Teams", host };
     return { name: host, host };
   } catch {
     return null;

@@ -29,10 +29,10 @@ function meetingUrlProblem(value: string): string | null {
   } catch {
     return "That doesn't look like a link. Paste the full meeting URL.";
   }
-  const supported = ["meet.google.com", "zoom.us", "teams.microsoft.com", "teams.live.com"];
+  const supported = ["meet.google.com"];
   const hostOk = supported.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`));
   if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443") || !hostOk) {
-    return "Use a Google Meet, Zoom or Microsoft Teams link that starts with https://.";
+    return "Use a Google Meet link that starts with https://.";
   }
   if (!url.pathname || url.pathname === "/") return "That's the platform's home page. Paste the link to the meeting itself.";
   return null;

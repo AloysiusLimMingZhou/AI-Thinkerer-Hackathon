@@ -106,7 +106,7 @@ def create_app(
                     or path
                     in {
                         f"/integrations/{p}/callback"
-                        for p in ("google", "slack", "microsoft", "zoom")
+                        for p in ("google",)
                     }
                 )
             )

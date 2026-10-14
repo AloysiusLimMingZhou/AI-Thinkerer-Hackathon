@@ -19,9 +19,6 @@ class SessionStatus(StrEnum):
 
 class Provider(StrEnum):
     GOOGLE = "google"
-    SLACK = "slack"
-    MICROSOFT = "microsoft"
-    ZOOM = "zoom"
 
 
 class SessionCreate(BaseModel):

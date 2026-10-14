@@ -23,12 +23,6 @@ class Settings:
     oauth_encryption_key: str | None = None
     google_client_id: str | None = None
     google_client_secret: str | None = None
-    slack_client_id: str | None = None
-    slack_client_secret: str | None = None
-    microsoft_client_id: str | None = None
-    microsoft_client_secret: str | None = None
-    zoom_client_id: str | None = None
-    zoom_client_secret: str | None = None
     backend_api_token: str | None = None
     recall_api_key: str | None = None
     recall_region: str = "ap-northeast-1"
@@ -73,10 +67,4 @@ class Settings:
             oauth_encryption_key=os.getenv("OAUTH_ENCRYPTION_KEY") or None,
             google_client_id=os.getenv("GOOGLE_CLIENT_ID") or None,
             google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET") or None,
-            slack_client_id=os.getenv("SLACK_CLIENT_ID") or None,
-            slack_client_secret=os.getenv("SLACK_CLIENT_SECRET") or None,
-            microsoft_client_id=os.getenv("MICROSOFT_CLIENT_ID") or None,
-            microsoft_client_secret=os.getenv("MICROSOFT_CLIENT_SECRET") or None,
-            zoom_client_id=os.getenv("ZOOM_CLIENT_ID") or None,
-            zoom_client_secret=os.getenv("ZOOM_CLIENT_SECRET") or None,
         )
