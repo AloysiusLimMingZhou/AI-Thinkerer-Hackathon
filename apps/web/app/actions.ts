@@ -183,7 +183,7 @@ export async function tryLine(sessionId: string, _prev: ActionState, form: FormD
   try {
     const decision = await backend.utterance(sessionId, { speaker, text });
     revalidatePath(`/meetings/${sessionId}`);
-    return decision.action === "answer"
+    return decision.action === "answer" || decision.action === "defer"
       ? { ok: "It answered.", answer: decision.answer ?? "" }
       : { ok: `It stayed quiet. ${reasonText(decision.reason, agent)}` };
   } catch (e) {

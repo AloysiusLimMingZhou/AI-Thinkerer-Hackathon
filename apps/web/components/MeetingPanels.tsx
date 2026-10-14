@@ -112,6 +112,8 @@ export function AnswersPanel({
                             <Icon name="doc" size={14} />
                             <span>{c.title}</span>
                             <span className={styles.sourceKind}>{c.source}</span>
+                            {c.locator && <span>{c.locator}</span>}
+                            {c.quote && <q>{c.quote}</q>}
                           </li>
                         ))}
                       </ul>

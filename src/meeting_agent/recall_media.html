@@ -20,9 +20,17 @@ async function play(item) {
   try {
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {audio.pause(); reject(new Error('timeout'));}, 60000);
-      audio.onended = () => {clearTimeout(timeout); resolve();};
-      audio.onerror = () => {clearTimeout(timeout); reject(new Error('playback'));};
-      audio.play().catch(error => {clearTimeout(timeout); reject(error);});
+      const stopPoll = setInterval(async () => {
+        try {
+          const response=await fetch(base+'/audio/'+encodeURIComponent(item.id)+'/state'+query,{cache:'no-store'});
+          if (response.status===401 || (response.ok && (await response.json()).state!=='playing')) {
+            audio.pause(); clearInterval(stopPoll); clearTimeout(timeout); reject(new Error('stopped'));
+          }
+        } catch {}
+      },250);
+      audio.onended = () => {clearInterval(stopPoll); clearTimeout(timeout); resolve();};
+      audio.onerror = () => {clearInterval(stopPoll); clearTimeout(timeout); reject(new Error('playback'));};
+      audio.play().catch(error => {clearInterval(stopPoll); clearTimeout(timeout); reject(error);});
     });
     outcome = 'played';
   } finally {

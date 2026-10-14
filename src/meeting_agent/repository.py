@@ -117,6 +117,11 @@ class SQLiteRepository:
                 """
             )
 
+        with self._connect() as connection:
+            columns={row[1] for row in connection.execute('PRAGMA table_info(transcript)')}
+            if 'participant_id' not in columns:
+                connection.execute('ALTER TABLE transcript ADD COLUMN participant_id TEXT')
+
     @staticmethod
     def _session_from_row(row: sqlite3.Row) -> SessionView:
         return SessionView(
@@ -244,7 +249,7 @@ class SQLiteRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, speaker, text, is_final, spoken_at
+                SELECT id, speaker, text, is_final, spoken_at, participant_id
                 FROM transcript WHERE session_id = ? ORDER BY spoken_at, rowid
                 """,
                 (session_id,),
@@ -253,6 +258,7 @@ class SQLiteRepository:
             TranscriptEntry(
                 id=row["id"],
                 speaker=row["speaker"],
+                participant_id=row["participant_id"],
                 text=row["text"],
                 is_final=bool(row["is_final"]),
                 spoken_at=row["spoken_at"],

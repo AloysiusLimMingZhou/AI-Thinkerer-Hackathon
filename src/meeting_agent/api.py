@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+from uuid import uuid4
+from .meeting_service import MeetingService, grounded_result
+from .meeting_models import MeetingUtterance
+from .playback import RecallPlayback
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import (
@@ -76,6 +80,9 @@ def create_app(
     context_importer = ContextImporter(oauth)
     knowledge = KnowledgeService(repository)
     recall = RecallService(settings, repository, brain, voice, recall_transport)
+    playback = RecallPlayback(recall)
+    meeting = MeetingService(repository, brain, knowledge, playback)
+    recall.meeting = meeting
 
     @asynccontextmanager
     async def lifespan(app):
@@ -95,6 +102,8 @@ def create_app(
     )
     app.state.recall = recall
     app.state.knowledge = knowledge
+    app.state.meeting = meeting
+    app.state.playback = playback
     app.include_router(knowledge_router(knowledge))
 
     @app.middleware("http")
@@ -321,53 +330,12 @@ def create_app(
     async def ingest_utterance(
         session_id: str, payload: UtteranceCreate
     ) -> AgentDecision:
-        session = require_session(session_id)
-        entry = repository.add_transcript(session_id, payload)
-        repository.record_event(
-            session_id, "transcript.utterance", entry.model_dump(mode="json")
-        )
-
-        if not payload.is_final and not payload.force_answer:
-            decision = AgentDecision(
-                action="stay_silent", reason="waiting for final caption"
-            )
-        else:
-            approved, reason = conversation_gate(
-                payload.text,
-                speaker=payload.speaker,
-                session=session,
-                transcript=repository.get_transcript(session_id),
-                qa_log=repository.get_qa_log(session_id),
-                force_answer=payload.force_answer,
-            )
-            if not approved:
-                decision = AgentDecision(action="stay_silent", reason=reason)
-            else:
-                selected_context = retrieve_context(
-                    payload.text, repository.get_context(session_id)
-                )
-                try:
-                    answer = await brain.answer(
-                        session,
-                        payload.text,
-                        repository.get_dialogue(session_id),
-                        selected_context,
-                    )
-                except IntegrationUnavailable as exc:
-                    raise HTTPException(status_code=503, detail=str(exc)) from exc
-                citations = citations_for(selected_context)
-                repository.add_qa(session_id, payload.text, answer, citations)
-                decision = AgentDecision(
-                    action="answer",
-                    reason=reason,
-                    answer=answer,
-                    citations=citations,
-                )
-
-        repository.record_event(
-            session_id, "agent.decision", decision.model_dump(mode="json")
-        )
-        return decision
+        require_session(session_id)
+        return await meeting.ingest(session_id,MeetingUtterance(
+            event_id=payload.event_id or str(uuid4()),platform="preview",
+            participant_id=payload.participant_id,speaker=payload.speaker,
+            text=payload.text,spoken_at=payload.spoken_at,is_final=payload.is_final,
+            is_self=payload.is_self,force_answer=payload.force_answer),preview=True)
 
     @app.post(
         "/sessions/{session_id}/coach",
@@ -379,7 +347,7 @@ def create_app(
         query = " ".join(
             item for item in (payload.latest_message, payload.objective) if item
         )
-        selected_context = retrieve_context(query, repository.get_context(session_id))
+        selected_context = knowledge.search(session_id, query)
         coaching_prompt = (
             "Privately suggest exactly what the meeting owner should say next. "
             f"Latest message: {payload.latest_message}"
@@ -396,8 +364,8 @@ def create_app(
         except IntegrationUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         result = CoachSuggestion(
-            suggestion=suggestion,
-            citations=citations_for(selected_context),
+            suggestion=grounded_result(suggestion,selected_context)[0],
+            citations=grounded_result(suggestion,selected_context)[1],
         )
         repository.record_event(
             session_id, "coach.suggestion", result.model_dump(mode="json")

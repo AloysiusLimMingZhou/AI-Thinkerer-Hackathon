@@ -32,13 +32,16 @@ export interface TranscriptEntry {
 }
 
 export interface Citation {
+  filename?: string | null;
+  locator?: string | null;
+  quote?: string | null;
   id: string;
   source: string;
   title: string;
 }
 
 export interface AgentDecision {
-  action: "stay_silent" | "answer";
+  action: "stay_silent" | "answer" | "defer";
   reason: string;
   answer?: string | null;
   citations?: Citation[];

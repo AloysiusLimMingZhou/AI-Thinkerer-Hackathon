@@ -5,6 +5,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from meeting_agent.api import create_app
+from meeting_agent.meeting_models import BrainAnswer, AnswerEvidence
 from meeting_agent.config import Settings
 from meeting_agent.models import ContextNoteView, SessionView, TranscriptEntry
 
@@ -21,7 +22,8 @@ class FakeBrain:
         context: list[ContextNoteView],
     ) -> str:
         self.context_seen = list(context)
-        return "The refunds migration is scheduled for Tuesday."
+        return BrainAnswer(kind="supported", text="The refunds migration is scheduled for Tuesday.",
+            evidence=[AnswerEvidence(chunk_id=context[0].id,quote=context[0].text)] if context else [])
 
     async def generate_minutes(
         self,
@@ -160,6 +162,7 @@ def test_partial_caption_waits_and_manual_override_answers(tmp_path: Path) -> No
         json={"speaker": "Sam", "text": "Thinkerer, what", "is_final": False},
     )
     assert partial.json()["reason"] == "waiting for final caption"
+    client.post(f"/sessions/{session['id']}/context",json={'notes':[{'title':'Update','content':'The refunds migration is Tuesday.'}]})
 
     forced = client.post(
         f"/sessions/{session['id']}/utterances",
@@ -204,6 +207,7 @@ def test_private_coach_suggests_what_owner_can_say(tmp_path: Path) -> None:
         "/sessions",
         json={"title": "Coach demo", "owner_name": "Muste"},
     ).json()["id"]
+    client.post(f'/sessions/{session_id}/context',json={'notes':[{'title':'Refunds','content':'The refunds migration is Tuesday.'}]})
     response = client.post(
         f"/sessions/{session_id}/coach",
         json={

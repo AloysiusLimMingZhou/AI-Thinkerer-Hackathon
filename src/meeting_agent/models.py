@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 
 def utc_now() -> datetime:
@@ -50,14 +50,18 @@ class ContextBatch(BaseModel):
 
 
 class UtteranceCreate(BaseModel):
+    event_id: str | None = Field(default=None,max_length=200)
+    participant_id: str | None = Field(default=None,max_length=200)
+    is_self: bool = False
     speaker: str = Field(min_length=1, max_length=100)
     text: str = Field(min_length=1, max_length=10_000)
     is_final: bool = True
     force_answer: bool = False
-    spoken_at: datetime = Field(default_factory=utc_now)
+    spoken_at: AwareDatetime = Field(default_factory=utc_now)
 
 
 class TranscriptEntry(BaseModel):
+    participant_id: str | None = None
     id: str
     speaker: str
     text: str
@@ -66,13 +70,16 @@ class TranscriptEntry(BaseModel):
 
 
 class Citation(BaseModel):
+    filename: str | None = None
+    locator: str | None = None
+    quote: str | None = None
     id: str
     source: str
     title: str
 
 
 class AgentDecision(BaseModel):
-    action: Literal["stay_silent", "answer"]
+    action: Literal["stay_silent", "answer", "defer"]
     reason: str
     answer: str | None = None
     citations: list[Citation] = Field(default_factory=list)

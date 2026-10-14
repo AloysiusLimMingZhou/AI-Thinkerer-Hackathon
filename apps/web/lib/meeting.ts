@@ -136,7 +136,7 @@ export function answersFrom(events: BackendEvent[]): AnswerItem[] {
     const p = e.payload as Record<string, unknown>;
     if (e.type === "transcript.utterance") {
       lastUtterance = p as UtterancePayload;
-    } else if (e.type === "agent.decision" && p.action === "answer" && typeof p.answer === "string") {
+    } else if (e.type === "agent.decision" && (p.action === "answer" || p.action === "defer") && typeof p.answer === "string") {
       const item: AnswerItem = {
         sequence: e.sequence,
         at: e.created_at,

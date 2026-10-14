@@ -530,115 +530,29 @@ class RecallService:
                 )
 
     async def process_transcript(self, job_id, session_id, data):
-        utterance = data.get("data", {})
-        text = " ".join(word["text"] for word in utterance.get("words", [])).strip()
-        if not text:
-            return
-        session = self.repository.get_session(session_id)
-        speaker = utterance.get("participant", {}).get("name") or "Unknown participant"
-        if speaker.casefold() in (
-            session.agent_name.casefold(),
-            f"{session.agent_name} (AI delegate)".casefold(),
-        ):
-            return
-        # The content hash survives redelivery with a different webhook identifier.
-        entry_id = hashlib.sha256(
-            json.dumps(
-                {"session": session_id, "utterance": utterance}, sort_keys=True
-            ).encode()
-        ).hexdigest()
-        item = UtteranceCreate(speaker=speaker[:100], text=text)
-        inserted = self.store.execute(
-            "INSERT OR IGNORE INTO transcript(id,session_id,speaker,text,is_final,spoken_at) VALUES(?,?,?,?,1,?)",
-            (entry_id, session_id, item.speaker, text, item.spoken_at.isoformat()),
-        )
-        if not inserted:
-            return
-        self.repository.record_event(
-            session_id,
-            "transcript.utterance",
-            {"id": entry_id, **item.model_dump(mode="json")},
-        )
-        approved, reason = conversation_gate(
-            text,
-            speaker=speaker,
-            session=session,
-            transcript=self.repository.get_transcript(session_id),
-            qa_log=self.repository.get_qa_log(session_id),
-            force_answer=False,
-        )
-        bot = self.store.bot(session_id)
-        # Don't answer historical transcripts, the bot's own playback, or queued backlogs.
-        stale = time.time() - float(data.get("alloy_received_at", time.time())) > 30
-        pending_audio = self.store.one(
-            "SELECT COUNT(*) AS count FROM recall_audio WHERE session_id=? AND expires>? AND state IN ('queued','playing')",
-            (session_id, time.time()),
-        )["count"]
-        # The media page plays serially: allow one follow-up behind the current
-        # reply, but bound backlog instead of speaking a long queue of stale answers.
-        queue_full = pending_audio >= 2
-        if not approved or stale or queue_full or bot["state"] in TERMINAL:
-            self.repository.record_event(
-                session_id,
-                "agent.decision",
-                {
-                    "action": "stay_silent",
-                    "reason": "stale transcript"
-                    if stale
-                    else "reply queue full"
-                    if queue_full
-                    else "meeting ended"
-                    if bot["state"] in TERMINAL
-                    else reason,
-                    "utterance_id": entry_id,
-                },
-            )
-            return
-        notes = retrieve_context(text, self.repository.get_context(session_id))
-        started = time.perf_counter()
-        answer = await self.brain.answer(
-            session, text, self.repository.get_dialogue(session_id), notes
-        )
-        answer_ms = round((time.perf_counter() - started) * 1000)
-        citations = citations_for(notes)
-        self.repository.add_qa(session_id, text, answer, citations)
-        self.repository.record_event(
-            session_id,
-            "agent.decision",
-            {
-                "action": "answer",
-                "reason": reason,
-                "answer": answer,
-                "citations": [c.model_dump() for c in citations],
-                "answer_ms": answer_ms,
-                "utterance_id": entry_id,
-            },
-        )
-        voice_started = time.perf_counter()
-        audio = await self.voice.generate(answer)
-        voice_ms = round((time.perf_counter() - voice_started) * 1000)
-        # Never speak a stale reply after a long API stall or after meeting end.
-        if (
-            time.time() - float(data.get("alloy_received_at", time.time())) <= 60
-            and self.store.bot(session_id)["state"] not in TERMINAL
-        ):
-            self.store.add_audio(session_id, answer, audio, job_id)
-            self.repository.record_event(
-                session_id,
-                "voice.queued",
-                {
-                    "id": job_id,
-                    "answer_ms": answer_ms,
-                    "voice_ms": voice_ms,
-                    "response_ready_ms": round((time.perf_counter() - started) * 1000),
-                    "replies_ahead": pending_audio,
-                },
-            )
+        from .meeting_models import MeetingUtterance
+        utterance=data.get("data",{})
+        words=utterance.get("words",[])
+        text=" ".join(word["text"] for word in words).strip()
+        if not text: return
+        participant=utterance.get("participant",{})
+        stamp=words[0].get("start_timestamp",{}).get("absolute")
+        spoken=datetime.fromisoformat(stamp.replace("Z","+00:00")) if stamp else datetime.now(UTC)
+        if spoken.tzinfo is None: spoken=spoken.replace(tzinfo=UTC)
+        event_id=hashlib.sha256(json.dumps(utterance,sort_keys=True).encode()).hexdigest()
+        await self.meeting.ingest(session_id,MeetingUtterance(
+            event_id=event_id,platform="google_meet",speaker=participant.get("name") or "Unknown participant",
+            participant_id=str(participant["id"]) if participant.get("id") is not None else None,
+            spoken_at=spoken,received_at=datetime.fromtimestamp(float(data.get("alloy_received_at",time.time())),UTC),
+            text=text,is_self=bool(participant.get("is_bot",False))))
 
     async def run_once(self):
         job = self.store.claim_job()
         if not job:
             return False
+        return await self._run_job(job)
+
+    async def _run_job(self,job):
         try:
             await self.process(job)
         except RecallError as exc:
@@ -679,15 +593,35 @@ class RecallService:
     async def worker(self):
         logger.info("Recall worker region: %s", self.settings.recall_region)
         self.store.recover()
-        while True:
-            try:
-                if not await self.run_once():
-                    await asyncio.sleep(0.25)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                logger.warning("Recall worker unavailable (%s)", type(exc).__name__)
-                await asyncio.sleep(1)
+        active=set()
+        calendar_locks={}
+        async def execute(job):
+            payload=json.loads(job['body'])
+            event=payload.get('event','')
+            calendar_id=payload.get('data',{}).get('calendar_id')
+            if calendar_id and (event.startswith('calendar.') or event=='internal.calendar_sync'):
+                async with calendar_locks.setdefault(calendar_id,asyncio.Lock()):
+                    return await self._run_job(job)
+            return await self._run_job(job)
+        try:
+            while True:
+                try:
+                    if len(active)<4:
+                        job=self.store.claim_job()
+                        if job:
+                            task=asyncio.create_task(execute(job))
+                            active.add(task)
+                            task.add_done_callback(active.discard)
+                            continue
+                    await asyncio.sleep(0.1)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.warning('Recall worker unavailable (%s)',type(exc).__name__)
+                    await asyncio.sleep(1)
+        finally:
+            for task in active: task.cancel()
+            await asyncio.gather(*active,return_exceptions=True)
 
     async def sync_calendar(self, calendar_id):
         # Full bounded Recall window avoids losing changes across retries/pagination.

@@ -101,6 +101,9 @@ def launch(client, service, sid):
     )
     assert response.status_code == 202, response.text
     asyncio.run(service.run_once())
+    service.store.execute("UPDATE recall_bots SET state='in_call_recording' WHERE session_id=? AND bot_id IS NOT NULL",(sid,))
+    from meeting_agent.models import ContextNoteCreate
+    service.repository.add_context(sid,[ContextNoteCreate(source="briefing",title="Meeting facts",content="The refunds migration is Tuesday. Demo launch is Friday. Budget is RM500. Jamie owns the checklist.")])
     return response.json()
 
 

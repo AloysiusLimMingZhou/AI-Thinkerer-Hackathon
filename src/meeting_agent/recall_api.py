@@ -39,9 +39,25 @@ class SayRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
 
 
+class MuteRequest(BaseModel):
+    muted: bool = True
+
+
 def router_for(service: RecallService):
     router = APIRouter()
     store, repo = service.store, service.repository
+
+    @router.post('/sessions/{session_id}/mute',tags=['meeting'])
+    async def mute(session_id: UUID,payload: MuteRequest):
+        if not repo.get_session(str(session_id)): raise HTTPException(404,'Session not found')
+        await service.meeting.playback.mute(str(session_id),payload.muted)
+        return {'muted':payload.muted}
+
+    @router.post('/sessions/{session_id}/stop-speaking',tags=['meeting'])
+    async def stop_speaking(session_id: UUID):
+        if not repo.get_session(str(session_id)): raise HTTPException(404,'Session not found')
+        await service.meeting.playback.stop(str(session_id))
+        return {'stopped':True}
 
     def session_or_404(session_id):
         session = repo.get_session(str(session_id))
@@ -238,6 +254,13 @@ def router_for(service: RecallService):
         item = store.claim_audio(str(session_id))
         return item or Response(status_code=204)
 
+    @router.get('/recall/media/{session_id}/audio/{audio_id}/state',include_in_schema=False)
+    async def audio_state(session_id: UUID,audio_id: str,token: str=Query()):
+        service.authorize_media(str(session_id),token)
+        item=store.one('SELECT state FROM recall_audio WHERE id=? AND session_id=?',(audio_id,str(session_id)))
+        if not item: raise HTTPException(404,'Audio not found')
+        return item
+
     @router.get("/recall/media/{session_id}/audio/{audio_id}", include_in_schema=False)
     async def get_audio(session_id: UUID, audio_id: str, token: str = Query()):
         service.authorize_media(str(session_id), token)
@@ -269,6 +292,8 @@ def router_for(service: RecallService):
         )
         if updated:
             repo.record_event(str(session_id), "voice." + outcome, {"id": audio_id})
+            if outcome=='failed':
+                await service.meeting.playback_failed(str(session_id),audio_id)
         return {"accepted": True}
 
     @router.get("/recall/calendar/callback", include_in_schema=False)
