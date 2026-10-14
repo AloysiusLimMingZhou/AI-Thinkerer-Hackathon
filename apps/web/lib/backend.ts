@@ -85,6 +85,8 @@ async function maybe<T>(path: string): Promise<T | null> {
 }
 
 export const backend = {
+  knowledge: (id: string) => call<{ id: string; title: string; source: string; preview: string; filename: string | null; created_at: string }[]>(`/sessions/${encodeURIComponent(id)}/knowledge`),
+  addKnowledge: (id: string, body: FormData) => call<{ sources: unknown[]; duplicates: string[] }>(`/sessions/${encodeURIComponent(id)}/knowledge`, { method: "POST", body }),
   health: () => call<Health>("/health"),
   recallStatus: () => call<RecallStatus>("/recall/status"),
 

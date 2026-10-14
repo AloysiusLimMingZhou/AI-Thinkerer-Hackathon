@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from .config import Settings
+from .knowledge import KnowledgeService
+from .knowledge_api import knowledge_router
 from .integrations import (
     ContextImporter,
     IntegrationError,
@@ -72,6 +74,7 @@ def create_app(
     voice = voice or ElevenLabsVoice(settings)
     oauth = OAuthManager(settings, repository, provider_requester)
     context_importer = ContextImporter(oauth)
+    knowledge = KnowledgeService(repository)
     recall = RecallService(settings, repository, brain, voice, recall_transport)
 
     @asynccontextmanager
@@ -91,6 +94,8 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.recall = recall
+    app.state.knowledge = knowledge
+    app.include_router(knowledge_router(knowledge))
 
     @app.middleware("http")
     async def private_backend(request: Request, call_next):
@@ -124,6 +129,19 @@ def create_app(
                 return JSONResponse(
                     {"detail": "Backend authentication required"}, status_code=401
                 )
+        if request.method == 'POST' and path.endswith('/knowledge'):
+            maximum = 22 * 1024 * 1024
+            try:
+                if int(request.headers.get('content-length','0')) > maximum:
+                    return JSONResponse({'detail':'Upload request exceeds 22 MiB'},status_code=413)
+            except ValueError:
+                return JSONResponse({'detail':'Invalid content length'},status_code=400)
+            body=bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body)>maximum:
+                    return JSONResponse({'detail':'Upload request exceeds 22 MiB'},status_code=413)
+            request._body=bytes(body)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -250,7 +268,7 @@ def create_app(
         session_id: str, payload: ContextBatch
     ) -> list[ContextNoteView]:
         require_session(session_id)
-        notes = repository.add_context(session_id, payload.notes)
+        notes = knowledge.add_notes(session_id, payload.notes)
         repository.record_event(
             session_id,
             "context.added",
@@ -272,7 +290,7 @@ def create_app(
             imported = await context_importer.import_context(payload)
         except IntegrationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        notes = repository.add_context(session_id, [imported])
+        notes = knowledge.add_notes(session_id, [imported])
         repository.record_event(
             session_id,
             "context.imported",

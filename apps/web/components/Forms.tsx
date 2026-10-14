@@ -43,7 +43,12 @@ export function AddNoteForm({ action, agent }: { action: Action; agent: string }
       </label>
       <label className={styles.field}>
         <span>Note</span>
-        <textarea name="content" rows={4} maxLength={100000} required placeholder={`Facts ${agent} can use when someone asks. It won’t go beyond what’s written here.`} />
+        <textarea name="content" rows={4} maxLength={100000} placeholder={`Facts ${agent} can use when someone asks. It won’t go beyond what’s written here.`} />
+      </label>
+      <label className={styles.field}>
+        <span>Knowledge files</span>
+        <input type="file" name="files" multiple accept=".txt,.md,.pdf,.docx" />
+        <span>Up to 5 files, 10 MB each and 20 MB combined. Text PDFs; scanned documents need OCR first.</span>
       </label>
       <button type="submit" className="btn btn-quiet" disabled={pending}>
         {pending ? "Saving…" : "Add note"}

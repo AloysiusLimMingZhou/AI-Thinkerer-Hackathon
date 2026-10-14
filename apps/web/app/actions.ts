@@ -52,7 +52,18 @@ function field(form: FormData, name: string): string {
   return String(form.get(name) ?? "").trim();
 }
 
-export async function sendToMeeting(_prev: ActionState, form: FormData): Promise<ActionState> {
+function knowledgePayload(form: FormData, text: string): FormData {
+  const files = form.getAll("files").filter((value): value is File => value instanceof File && value.size > 0);
+  if (files.length > 5 || files.some((f) => f.size > 10 * 1024 * 1024) || files.reduce((n, f) => n + f.size, 0) > 20 * 1024 * 1024) {
+    throw new Error("Use at most 5 files, 10 MB each and 20 MB combined.");
+  }
+  const payload = new FormData();
+  payload.set("text", text);
+  for (const file of files) payload.append("files", file);
+  return payload;
+}
+
+export async function sendToMeeting(prev: ActionState, form: FormData): Promise<ActionState> {
   const meetingUrl = field(form, "meeting_url");
   const title = field(form, "title") || "Meeting";
   const owner = field(form, "owner_name") || DEFAULT_OWNER;
@@ -68,17 +79,24 @@ export async function sendToMeeting(_prev: ActionState, form: FormData): Promise
   }
   if (form.get("consent") !== "yes") return { error: "Confirm that people in the meeting know Alloy will join and transcribe." };
 
-  let sessionId: string;
+  let payload: FormData;
+  try { payload = knowledgePayload(form, notes); }
+  catch (e) { return { error: (e as Error).message, sessionId: prev?.sessionId }; }
+  let sessionId = prev?.sessionId;
   try {
-    const session = await backend.createSession({ title, owner_name: owner, agent_name: agent, meeting_url: meetingUrl });
+    const session = sessionId ? await backend.getSession(sessionId) : await backend.createSession({ title, owner_name: owner, agent_name: agent, meeting_url: meetingUrl });
+    if (!session) return { error: "The saved meeting could not be found. Reload to start again." };
+    if (session.title !== title || session.owner_name !== owner || session.agent_name !== agent || session.meeting_url !== meetingUrl) {
+      return { sessionId, error: "A meeting is already saved for this attempt. Open it below to finish adding knowledge, or reload to start a different meeting." };
+    }
     sessionId = session.id;
-    if (notes) await backend.addContext(sessionId, [{ source: "briefing", title: "Briefing notes", content: notes }]);
+    if (notes || payload.has("files")) await backend.addKnowledge(sessionId, payload);
   } catch (e) {
-    return { error: explain(e) };
+    return { sessionId, error: `Knowledge wasn't saved; the bot has not been sent. ${explain(e)}` };
   }
 
   try {
-    await backend.launchBot(sessionId, { idempotency_key: randomUUID(), consent_confirmed: true, ...(joinAt ? { join_at: joinAt } : {}) });
+    await backend.launchBot(sessionId, { idempotency_key: `web-${sessionId}`, consent_confirmed: true, ...(joinAt ? { join_at: joinAt } : {}) });
   } catch (e) {
     revalidatePath("/");
     return { sessionId, error: `The meeting is saved, but ${agent} couldn't be sent yet. ${explain(e)}` };
@@ -95,7 +113,7 @@ export async function launchBot(sessionId: string, _prev: ActionState, form: For
   }
   if (form.get("consent") !== "yes") return { error: "Confirm that people in the meeting know Alloy will join and transcribe." };
   try {
-    await backend.launchBot(sessionId, { idempotency_key: randomUUID(), consent_confirmed: true, ...(joinAt ? { join_at: joinAt } : {}) });
+    await backend.launchBot(sessionId, { idempotency_key: `web-${sessionId}`, consent_confirmed: true, ...(joinAt ? { join_at: joinAt } : {}) });
   } catch (e) {
     if (e instanceof BackendError && e.status === 409) {
       return { error: "This meeting already had a launch. Start a new meeting to send the bot again." };
@@ -134,9 +152,10 @@ export async function sayInMeeting(sessionId: string, _prev: ActionState, form: 
 export async function addNote(sessionId: string, _prev: ActionState, form: FormData): Promise<ActionState> {
   const title = field(form, "title") || "Note";
   const content = field(form, "content");
-  if (!content) return { error: "Write the note first." };
   try {
-    await backend.addContext(sessionId, [{ source: "briefing", title, content }]);
+    const payload = knowledgePayload(form, content ? `${title}\n${content}` : "");
+    if (!content && !payload.has("files")) return { error: "Add text or choose a file." };
+    await backend.addKnowledge(sessionId, payload);
   } catch (e) {
     return { error: explain(e) };
   }

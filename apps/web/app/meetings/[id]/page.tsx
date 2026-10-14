@@ -50,13 +50,14 @@ interface Loaded {
   transcript: TranscriptEntry[];
   events: BackendEvent[];
   minutes: Minutes | null;
+  knowledge: Awaited<ReturnType<typeof backend.knowledge>>;
 }
 
 async function load(id: string): Promise<Loaded | null> {
   const session = await backend.getSession(id);
   if (!session) return null;
-  const [bot, transcript, events, minutes] = await Promise.all([backend.bot(id), backend.transcript(id), backend.events(id), backend.minutes(id)]);
-  return { session, bot, transcript, events, minutes };
+  const [bot, transcript, events, minutes, knowledge] = await Promise.all([backend.bot(id), backend.transcript(id), backend.events(id), backend.minutes(id), backend.knowledge(id)]);
+  return { session, bot, transcript, events, minutes, knowledge };
 }
 
 export default async function MeetingPage({ params, searchParams }: Params) {
@@ -75,7 +76,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
   const agent = session.agent_name;
   const answers = answersFrom(events);
   const silences = silencesFrom(events);
-  const notes = briefingFrom(events);
+  const notes = data.knowledge.map((item) => ({ ...item, content: item.preview }));
   const lines = mergedTranscript(transcript, answers, agent);
   const tl = timeline(transcript, answers, silences);
   const live = isLive(session, bot);

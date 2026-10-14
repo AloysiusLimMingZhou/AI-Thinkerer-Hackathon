@@ -14,6 +14,8 @@ export function SendForm({ ready }: { ready: boolean }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(sendToMeeting, null);
   const [agent, setAgent] = useState(DEFAULT_AGENT);
   const [scheduled, setScheduled] = useState(false);
+  const [values, setValues] = useState({ meeting_url: "", title: "", notes: "", owner_name: DEFAULT_OWNER });
+  const update = (name: keyof typeof values, value: string) => setValues((old) => ({ ...old, [name]: value }));
 
   useEffect(() => {
     if (state?.ok && state.sessionId) router.push(`/meetings/${state.sessionId}`);
@@ -25,12 +27,12 @@ export function SendForm({ ready }: { ready: boolean }) {
     <form action={action} className={styles.form}>
       <label className={styles.field}>
         <span className={styles.label}>Meeting link</span>
-        <input name="meeting_url" type="url" required inputMode="url" placeholder="https://meet.google.com/abc-defg-hij" autoComplete="off" />
+        <input name="meeting_url" value={values.meeting_url} onChange={(e) => update("meeting_url", e.target.value)} type="url" required inputMode="url" placeholder="https://meet.google.com/abc-defg-hij" autoComplete="off" />
       </label>
 
       <label className={styles.field}>
         <span className={styles.label}>What’s the meeting?</span>
-        <input name="title" required maxLength={200} placeholder="Weekly payments sync" />
+        <input name="title" value={values.title} onChange={(e) => update("title", e.target.value)} required maxLength={200} placeholder="Weekly payments sync" />
       </label>
 
       <label className={styles.field}>
@@ -39,10 +41,18 @@ export function SendForm({ ready }: { ready: boolean }) {
         </span>
         <textarea
           name="notes"
+          value={values.notes}
+          onChange={(e) => update("notes", e.target.value)}
           rows={5}
           maxLength={100000}
           placeholder="Your update, decisions already made, facts people might ask about. It answers only from these notes and what’s said in the call."
         />
+      </label>
+
+      <label className={styles.field}>
+        <span className={styles.label}>Knowledge files <span className={styles.optional}>Optional</span></span>
+        <input name="files" type="file" multiple accept=".txt,.md,.pdf,.docx" />
+        <span className={styles.hint}>Text, Markdown, text PDFs or Word documents. Up to 5 files, 10 MB each and 20 MB combined.</span>
       </label>
 
       <div className={styles.pair}>
@@ -52,7 +62,7 @@ export function SendForm({ ready }: { ready: boolean }) {
         </label>
         <label className={styles.field}>
           <span className={styles.label}>Attending for</span>
-          <input name="owner_name" defaultValue={DEFAULT_OWNER} maxLength={100} required />
+          <input name="owner_name" value={values.owner_name} onChange={(e) => update("owner_name", e.target.value)} maxLength={100} required />
         </label>
       </div>
       <p className={styles.hint}>
