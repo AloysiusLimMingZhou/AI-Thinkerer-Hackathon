@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
-from elevenlabs.client import ElevenLabs
 from openai import AsyncOpenAI
 
 from .config import Settings
@@ -370,33 +369,5 @@ class OpenAIBrain:
         )
 
 
-class ElevenLabsVoice:
-    def __init__(self, settings: Settings) -> None:
-        self.settings = settings
-
-    async def generate(self, text: str) -> bytes:
-        if not self.settings.elevenlabs_api_key:
-            raise IntegrationUnavailable(
-                "ELEVENLABS_API_KEY is not configured; add it to a local .env file"
-            )
-        try:
-            audio = await asyncio.to_thread(self._generate_sync, text)
-        except Exception:
-            raise IntegrationUnavailable(
-                "ElevenLabs request failed; check Text to Speech access, voice and available credits"
-            ) from None
-        if not audio:
-            raise IntegrationUnavailable("ElevenLabs returned empty audio")
-        return audio
-
-    def _generate_sync(self, text: str) -> bytes:
-        client = ElevenLabs(api_key=self.settings.elevenlabs_api_key, timeout=30)
-        audio = client.text_to_speech.convert(
-            text=text,
-            voice_id=self.settings.elevenlabs_voice_id,
-            model_id=self.settings.elevenlabs_model_id,
-            output_format="mp3_44100_128",
-        )
-        if isinstance(audio, bytes):
-            return audio
-        return b"".join(audio)
+# Compatibility import for existing callers; provider implementation is focused.
+from .voice import ElevenLabsVoice

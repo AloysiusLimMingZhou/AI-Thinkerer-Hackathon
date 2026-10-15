@@ -97,7 +97,7 @@ async def main():
             )
         )
     started = time.perf_counter()
-    audio = await ElevenLabsVoice(settings).generate(
+    audio = await ElevenLabsVoice(settings, budget).generate(
         "We haven't settled the budget yet."
     )
     print(

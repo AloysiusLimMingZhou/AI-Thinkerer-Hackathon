@@ -19,6 +19,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -42,6 +43,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "tzdata", specifier = ">=2025.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.35.0" },
+    { name = "websockets", specifier = ">=17.1,<18" },
 ]
 
 [package.metadata.requires-dev]

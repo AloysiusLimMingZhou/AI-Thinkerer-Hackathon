@@ -17,7 +17,7 @@ class Settings:
     openai_transcription_model: str = "gpt-transcribe"
     openai_answer_model: str = "gpt-6-luna"
     elevenlabs_voice_id: str = "IKne3meq5aSn9XLyUdCD"
-    elevenlabs_model_id: str = "eleven_flash_v2_5"
+    elevenlabs_model_id: str = "eleven_v4_turbo"
     database_path: Path = Path("data/meeting_agent.db")
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
     app_base_url: str = "http://localhost:8000"
@@ -88,7 +88,7 @@ class Settings:
             elevenlabs_voice_id=os.getenv(
                 "ELEVENLABS_VOICE_ID", "IKne3meq5aSn9XLyUdCD"
             ),
-            elevenlabs_model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5"),
+            elevenlabs_model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_v4_turbo"),
             database_path=Path(os.getenv("MEETING_AGENT_DB", "data/meeting_agent.db")),
             cors_origins=origins,
             app_base_url=os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/"),

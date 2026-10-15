@@ -1,6 +1,7 @@
 import time
 from typing import Protocol
 from fastapi import HTTPException
+from .budget import PaidCallContext, paid_call_context
 
 
 class Playback(Protocol):
@@ -35,7 +36,8 @@ class RecallPlayback:
         if existing: return key
         if not self.available(sid): raise HTTPException(409,'Reply queue is full')
         started=time.perf_counter()
-        audio=await self.recall.voice.generate(text)
+        with paid_call_context(PaidCallContext(sid, f'speech:{key}', 'speech')):
+            audio=await self.recall.voice.generate(text)
         if not await self.is_live(sid) or self.muted(sid):
             raise HTTPException(409,'Meeting ended or speech was muted before playback')
         if not self.available(sid): raise HTTPException(409,'Reply queue is full')

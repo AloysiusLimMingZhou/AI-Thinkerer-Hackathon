@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from .config import Settings
-from .budget import BudgetService, BudgetExceeded
+from .budget import BudgetService, BudgetExceeded, PaidCallContext, paid_call_context
 from .budget_api import budget_router
 from .escalations import EscalationService
 from .discord_client import DiscordTransport
@@ -82,7 +82,7 @@ def create_app(
     repository = repository or SQLiteRepository(settings.database_path)
     budget = BudgetService(repository, settings)
     brain = brain or OpenAIBrain(settings, budget)
-    voice = voice or ElevenLabsVoice(settings)
+    voice = voice or ElevenLabsVoice(settings, budget)
     oauth = OAuthManager(settings, repository, provider_requester)
     context_importer = ContextImporter(oauth)
     knowledge = KnowledgeService(repository)
@@ -419,7 +419,8 @@ def create_app(
     async def speak(session_id: str, payload: SpeakRequest) -> Response:
         require_session(session_id)
         try:
-            audio = await voice.generate(payload.text)
+            with paid_call_context(PaidCallContext(session_id, str(uuid4()), 'manual-speech')):
+                audio = await voice.generate(payload.text)
         except IntegrationUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         repository.record_event(session_id, "voice.generated", {"text": payload.text})
