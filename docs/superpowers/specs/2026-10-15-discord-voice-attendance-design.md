@@ -1,7 +1,7 @@
 # Discord voice attendance and monthly API budget
 
 Date: 15 October 2026 (Asia/Kuala_Lumpur).
-Status: approved by the owner on 15 October 2026, including the transcript-context clarification below. Written implementation-plan review is next. No voice attendance or budget implementation is claimed by this document.
+Status: approved by the owner on 15 October 2026, including the transcript-context clarification below. The implementation plan was approved on 15 October 2026 and native implementation is built with offline checks; see IMPLEMENTATION_VERIFICATION.md for evidence and live-call limitations.
 Builds on the approved personal-meeting-agent design dated 14 October 2026 and the merged foundation in PR #3.
 
 ## Owner requirements and success
@@ -123,4 +123,4 @@ Always detach receive subscriptions, stop the player, destroy the voice connecti
 - [discord.js voice 0.19.2](https://discord.js.org/docs/packages/voice/0.19.2) and [voice package changelog](https://github.com/discordjs/discord.js/blob/main/packages/voice/CHANGELOG.md).
 - [Python receive extension DAVE issue](https://github.com/imayhaveborkedit/discord-ext-voice-recv/issues/64).
 
-Self-review: concrete model IDs, budget scope, no-key development, migration, side effects, identity, transport recovery, cap behavior and verification boundaries are specified. No product dependencies or runtime code are changed by this draft. Written-spec approval is recorded above; written implementation-plan review remains outstanding.
+Self-review: concrete model IDs, budget scope, no-key development, migration, side effects, identity, transport recovery, cap behavior and verification boundaries are specified. No product dependencies or runtime code are changed by this draft. Written spec and implementation-plan approvals are recorded. The final implementation verification is maintained separately.

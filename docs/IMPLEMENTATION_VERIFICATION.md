@@ -1,4 +1,30 @@
-# Foundation implementation verification
+# Implementation verification
+
+## Discord voice attendance: 15 October 2026
+
+Branch: codex/discord-voice-attendance. Base: 9943ca3c78db53dafdcd7d1b68f9fa8985df8c0e.
+
+Fresh pre-review checks:
+
+| Check | Result |
+| --- | --- |
+| uv sync --locked | Passed |
+| Complete Python backend suite | **222 passed**, one Starlette/AnyIO deprecation warning |
+| Worker npm ci / npm test | Passed; **7 tests**, including a real Opus/FFmpeg fixture |
+| Web npm ci / npm test | Passed; **6 behavior tests** |
+| Web typecheck / production build | Passed |
+| git diff --check | Passed |
+| Impeccable detector for changed UI | No findings |
+| Local offline browser | Meet/Discord form states; text briefing saved without keys; prepared knowledge displayed; Discord health/control panel, budget warning/held/reset and Generate notes shown |
+| Responsive browser | 390px viewport; document width 375px, no horizontal overflow |
+
+Runtime: Python 3.13.13, Node 24.18.0/npm 11.8.0, FFmpeg 8.1.2. Locked voice dependency report: @discordjs/voice 0.19.2, opusscript 0.0.8, @snazzah/davey 0.1.12, libopus present. No real Gateway login/command registration, meeting join, owner notification or paid provider request occurred. Preview data used a separate ignored SQLite database.
+
+The first dev-preview origin was blocked by Next.js development-origin checks; interactive checks were completed against the compiled production server. No origin protection was relaxed. A new UI text encoding issue was corrected and the production build rerun.
+
+Independent whole-branch review is pending below. Live DAVE reception, actual provider model/voice access, transcription accuracy, external permissions and audible playback remain unverified. Follow DISCORD_VOICE_SETUP.md for the later authorized private-call check.
+
+## Foundation verification (historical)
 
 15 October 2026, Asia/Kuala_Lumpur. Branch: `codex/personal-meeting-foundation`, based on `becf4b8` on `main`. Commits use AloysiusLimMingZhou's configured author identity.
 

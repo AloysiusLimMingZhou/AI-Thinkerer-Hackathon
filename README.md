@@ -1,80 +1,100 @@
 # Meeting Agent
 
-A personal meeting assistant for Google Meet, with meeting-scoped knowledge, grounded spoken answers, and urgent questions routed to your Discord question threads. The product name is neutral; each meeting can use your chosen owner and delegate names.
+A personal meeting delegate for **Google Meet and Discord**. Prepare text/file knowledge on the website, let the agent take notes, and get grounded answers aloud. Unknown questions ask whether they are urgent; a confirmed urgent question tags the configured owner in a Discord thread. New replies from that thread are spoken once in the associated live meeting.
 
-This implements the approved [foundation design](docs/superpowers/specs/2026-10-14-personal-meeting-agent-design.md). **Discord voice attendance and `/join` are the next milestone.** Slack, Microsoft and Zoom integrations are removed from active use; existing meeting records remain readable.
+Discord voice attendance and `/join` are implemented and verified with offline transports. **Real Discord DAVE reception, provider compatibility, transcription accuracy and audible playback still need the private-call acceptance check after credentials are supplied.** No live registration, meeting join, owner ping or paid provider request was performed during implementation.
 
-## What works in this phase
+## Use it
 
-1. Create a Google Meet session with pasted text and TXT, Markdown, text PDF or DOCX files. Uploads finish before a bot launch is submitted; a failed upload can be retried in the same saved meeting.
-2. The Recall bot transcribes the call. Addressed factual answers require retrieved meeting knowledge and valid evidence excerpts, shown with filename and location in the dashboard.
-3. An unsupported question receives: “I don't know based on the knowledge I have. Is this urgent?” A clear confirmation within 60 seconds creates a persisted Discord escalation. Negations, uncertain references and unknown speakers cannot notify the owner.
-4. Discord tags only the configured owner and creates a question thread. New text replies by that owner are saved as knowledge for this meeting and spoken as “[owner] says: …”. Replies after the meeting update notes without rejoining.
-5. Complete transcripts are summarized in chronological segments of at most 30,000 characters, with hierarchical synthesis for long meetings. Tracked questions and owner replies are retained in an appendix. The dashboard keeps polling through final processing and shows failures.
+- **Google Meet:** paste the meeting URL, add knowledge, confirm participant awareness, then send or schedule the Recall bot.
+- **Discord:** choose Discord briefing, give it a name and add text/TXT/Markdown/text PDF/DOCX. Save, then use `/join channel:#voice-channel briefing:<prepared briefing>` in your configured guild. The briefing picker is optional: no selection starts with empty knowledge. Failed uploads remain recoverable drafts.
+- Only the configured Discord owner can use `/join`, `/leave`, `/mute`, `/unmute`, `/stop-speaking` and `/status`. Controls reply privately; meeting answers are voice only.
+- Muting stops speech while notes continue. After departure, the complete chronological transcript becomes minutes with tracked-question, owner-answer and capture-gap appendices. Budget-blocked notes show **Generate notes** for an explicit later retry.
 
-Ordinary answers are spoken in the meeting. Discord text is used for urgent questions and owner replies. Manual caption preview/coaching never notifies Discord or speaks into a meeting.
+Slack, Microsoft and Zoom integrations remain outside active use. Historical records remain readable. Full-duplex interruption, Google Drive import, connector token renewal, retention controls and multi-user authentication remain incomplete.
 
 ## Local setup
 
-Use Python 3.13 and Node.js 24; selectors and lockfiles are committed.
+Python 3.13, Node 22.12+ (tested on 24.18.0), and FFmpeg with Opus support are required for Discord voice.
 
 ```powershell
 uv sync --locked
-# Copy only when .env does not exist.
+# Copy only if .env does not exist.
 Copy-Item .env.example .env
 uv run --locked python main.py
 ```
 
-Set `BACKEND_API_TOKEN` in the ignored root `.env`. Live Meet attendance needs Recall, OpenAI and ElevenLabs settings. Discord is optional and has four separate settings; follow [Discord setup and recovery](docs/DISCORD_SETUP.md).
+Set `BACKEND_API_TOKEN` in root `.env`. Credentials can be added later; knowledge authoring and stored notes work without AI keys. For Discord dependencies, run `npm ci --prefix apps/discord-voice`. Follow [Discord voice setup](docs/DISCORD_VOICE_SETUP.md) before enabling attendance or explicitly registering guild commands.
 
 ```powershell
 cd apps/web
 npm ci
-# Copy only when .env.local does not exist.
+# Copy only if .env.local does not exist.
 Copy-Item .env.example .env.local
-npm run dev -- --hostname 127.0.0.1
+node node_modules/next/dist/bin/next dev --hostname 127.0.0.1
 ```
 
-In `apps/web/.env.local`, set server-only `ALLOY_BACKEND_URL=http://127.0.0.1:8000` and the same `BACKEND_API_TOKEN`. Open `http://127.0.0.1:3000`. API documentation is at `http://127.0.0.1:8000/docs`; Authorize with the backend token.
+Set server-only `ALLOY_BACKEND_URL=http://127.0.0.1:8000` and the same `BACKEND_API_TOKEN` in `apps/web/.env.local`. Open `http://127.0.0.1:3000`. Set root `WEB_BASE_URL` to the website's actual origin for Discord dashboard links. API docs: `http://127.0.0.1:8000/docs`.
 
-Run one backend process. This is a single trusted operator app with no frontend login: keep it on localhost until authentication is added. Provider keys and tokens stay in the backend/server environment.
+Run **one backend process** with one SQLite database. The website is a trusted local operator console with no login: bind it to loopback and add authentication before public deployment. Provider secrets stay server-side.
 
-## Knowledge limits
+## Models and monthly budget
 
-- Five files per submission, 10 MiB per file, 20 MiB of files combined; total multipart request 22 MiB.
-- Pasted text: 100,000 characters per submission. Normalized knowledge: 1,000,000 characters per meeting.
-- TXT/Markdown must be UTF-8. PDFs need embedded text; encrypted/scanned documents require conversion/OCR outside the app. PDF limit: 300 pages.
-- DOCX expansion limit: 50 MiB and 2,000 ZIP entries. Extraction has a 10-second process timeout and a 500,000-character document limit.
-- Sources are chunked at 2,000 characters with 200-character overlap. Exact duplicate normalized content is skipped. Invalid mixed batches save nothing.
+| Operation | Default API model | Published rate checked 15 October 2026 |
+| --- | --- | --- |
+| Transcription | `gpt-transcribe` | USD 0.0045 / audio minute |
+| Answers and minutes | `gpt-6-luna` | USD 0.10 / million input tokens; USD 0.50 / million output tokens |
+| Speech | `eleven_v4_turbo` | USD 0.04 / 1,000 characters |
 
-Original file bytes are discarded after extraction. Normalized text, provenance, transcripts and audio are stored in local SQLite. There is no global knowledge library or automatic Discord history ingestion.
+Sources: [OpenAI pricing](https://developers.openai.com/api/docs/pricing), [Luna](https://developers.openai.com/api/docs/models/gpt-6-luna), [ElevenLabs API pricing](https://elevenlabs.io/pricing/api). Model access and the configured voice must be validated with your accounts; there is no automatic fallback.
+
+The shared estimated budget defaults to **USD 5 soft / USD 8 hard per Asia/Kuala_Lumpur calendar month**, across both platforms, previews and finalization. Every paid request reserves a conservative amount atomically before dispatch, including a 10% margin. Unknown rates fail closed. Timeouts and uncertain charges stay held across restart; unused successful reservations are released. Luna requests above 272,000 estimated input tokens are rejected.
+
+At the hard boundary, Discord attendance stops receiving/playing and leaves without buying a spoken notice. Saved transcript and deterministic appendices remain available. Successful summary sections are cached for manual retry; a new month does not automatically retry or rejoin.
+
+At 60 billed audio minutes, 5,000 spoken characters and 50,000 input/5,000 output text tokens per hour, **4-8 hours costs about USD 1.91-3.82**. More bot speech, overlapping speakers and retries increase usage. This cap is an application estimate, not an invoice guarantee. It excludes Recall, hosting, subscriptions, taxes and other applications using the same credentials.
+
+## Knowledge and context
+
+- Five files per submission; 10 MiB each, 20 MiB combined; 22 MiB multipart request.
+- Pasted text: 100,000 characters; normalized knowledge: 1,000,000 characters per meeting.
+- UTF-8 TXT/Markdown; PDFs require embedded text (300 pages maximum). Scanned/encrypted PDFs need external conversion.
+- DOCX expansion: 50 MiB / 2,000 ZIP entries; extraction: 10 seconds / 500,000 characters.
+- Chunks: 2,000 characters with 200 overlap. Duplicate normalized content is skipped; invalid mixed batches save nothing.
+- Discord meetings copy full briefing text and locators. Later edits/deletion do not change existing meeting copies.
+
+Live answers send the current question, at most eight retrieved knowledge chunks and the latest 12 dialogue utterances (2,000 characters each) to Luna. The local address gate runs first. Final notes use the complete chronological transcript in sections of at most 30,000 characters and bounded synthesis. Evidence excerpts are checked before factual answers can be spoken.
+
+Original upload bytes and Discord audio clips are discarded after processing. SQLite retains normalized knowledge, transcripts, events, minutes, cost records and bounded Recall playback audio. There is no automatic Discord history ingestion.
 
 ## Architecture
 
 ```text
 Next.js server components/actions -> authenticated FastAPI -> SQLite
-Recall Google Meet captions -> MeetingService -> knowledge + structured OpenAI answer
-  -> ElevenLabs MP3 -> Recall playback outbox -> meeting
-Unknown question -> urgency confirmation -> durable outbox -> Discord parent + thread
-Configured owner reply -> meeting knowledge + deduplicated spoken relay
-Final Recall transcript + Q&A + tracked questions/replies -> MinutesService -> dashboard
+Meet: Recall captions -----------+
+Discord: supervised Node worker -+-> MeetingService -> knowledge + Luna -> PlaybackRouter
+  Opus -> FFmpeg -> WAV -> GPT-Transcribe                    |-> Recall MP3 outbox
+                                                          |-> Discord audio player
+Unknown -> speaker-bound urgency -> Discord REST question/thread -> owner reply -> shared voice
+Complete transcript + Q&A/questions/replies/gaps -> cached MinutesService -> website
+All OpenAI / ElevenLabs requests -> durable reservation/usage ledger
 ```
 
-Python/FastAPI/Pydantic/HTTPX/SQLite; Next.js 16/React 19/TypeScript/CSS modules. Recall handles Meet transport; discord.py handles optional Gateway messages and HTTPX handles controlled REST operations. Spoken answers default to `gpt-4.1-mini`, minutes to `gpt-5-mini`, speech to ElevenLabs Flash with Charlie; all remain configurable.
+Python/FastAPI/Pydantic/HTTPX/SQLite; Next.js 16/React 19/TypeScript/CSS modules. Discord voice uses locked discord.js 14.27.0, @discordjs/voice 0.19.2, opusscript and its DAVE dependency. Node receives only the Discord token. It is the sole Gateway owner when voice is enabled; otherwise discord.py supports Meet escalation replies. Controlled Discord REST notifications remain in Python. ElevenLabs v4 Turbo uses the dialogue WebSocket.
 
-## Verification and remaining work
+## Verification
 
 ```powershell
 uv sync --locked
-uv run --locked pytest -q
-cd apps/web
-npm test
-npm run typecheck
-npm run build
+uv run --locked pytest -q --basetemp data/pytest-verification
+npm ci --prefix apps/discord-voice
+npm test --prefix apps/discord-voice
+npm ci --prefix apps/web
+npm test --prefix apps/web
+npm run typecheck --prefix apps/web
+npm run build --prefix apps/web
 ```
 
-The automated checks cover the backend, two frontend behavior tests, TypeScript and the production build, on Python 3.13.13 and Node 24.18.0/npm 11.8.0. Tests use fake providers, real SQLite and real local document extraction. Browser checks cover upload rejection/retry and notes updating after call end. See [current assessment](docs/PROJECT_ASSESSMENT.md) and the [implementation verification](docs/IMPLEMENTATION_VERIFICATION.md) for exact results and review limitations.
+Tests use fake providers/Gateway transports, real SQLite, local document extraction and a real local Opus fixture/FFmpeg conversion. The dedicated pytest directory avoids Windows temp ACL problems; pytest owns and replaces only that directory.
 
-Live provider credentials, Discord intent/permissions, public Recall webhooks, Google consent, meeting admission and audible playback still require an operator test. No live provider calls or Discord messages were used to verify this phase. Speech uses complete MP3 clips; full-duplex audio, barge-in and a 2.5-second audible-response target are unverified. Google Drive import, automatic connector token refresh, retention controls and multi-user authentication remain incomplete.
-
-For operations use [backend handoff](docs/BACKEND_HANDOFF.md), [demo runbook](docs/DEMO_RUNBOOK.md) and [Discord setup](docs/DISCORD_SETUP.md). The [original hackathon design](docs/HACKATHON_DESIGN.md) is historical, including its unimplemented browser/audio architecture and simulator commands.
+See [verification evidence](docs/IMPLEMENTATION_VERIFICATION.md), [backend handoff](docs/BACKEND_HANDOFF.md), [Discord voice setup](docs/DISCORD_VOICE_SETUP.md), and [Meet/notification setup](docs/DISCORD_SETUP.md). The [foundation assessment](docs/PROJECT_ASSESSMENT.md) and [original hackathon design](docs/HACKATHON_DESIGN.md) describe earlier states.

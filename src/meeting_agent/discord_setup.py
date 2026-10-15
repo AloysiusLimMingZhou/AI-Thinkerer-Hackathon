@@ -1,10 +1,10 @@
 """Explicit guild registration. Importing this module performs no I/O."""
-import asyncio,os
+import asyncio,os,re
 from pathlib import Path
 from .config import Settings
 
 async def register(settings,*,factory=asyncio.create_subprocess_exec):
-    if not settings.discord_guild_id or not settings.discord_bot_token:
+    if not re.fullmatch(r'[0-9]{15,22}',settings.discord_guild_id or '') or not settings.discord_bot_token:
         raise ValueError('Set DISCORD_GUILD_ID and DISCORD_BOT_TOKEN')
     allowed={'PATH','PATHEXT','SYSTEMROOT','WINDIR','TEMP','TMP','USERPROFILE','APPDATA','LOCALAPPDATA'}
     env={k:v for k,v in os.environ.items() if k.upper() in allowed}

@@ -1,6 +1,6 @@
 # Discord Voice Attendance Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Attend Discord voice meetings through /join with optional website briefings, the selected AI models, shared Meet/Discord answering and notes, and a USD 5 soft / USD 8 hard estimated monthly API budget.
 
@@ -10,7 +10,7 @@
 
 **Spec:** docs/superpowers/specs/2026-10-15-discord-voice-attendance-design.md, approved 15 October 2026, plus the approved foundation design dated 14 October 2026 for knowledge, urgency and owner-reply semantics.
 
-**Execution:** Preserve the owner's Native execution choice: implement in this session, then one independent whole-branch review. This newly written plan is pending owner review.
+**Execution:** Preserve the owner's Native execution choice: implement in this session, then one independent whole-branch review. Approved by the owner on 15 October 2026: start Native implementation.
 
 ## Global Constraints
 
@@ -71,7 +71,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - Reservation has id/month/reserved_micro_usd. BudgetStatus has month/timezone/reset_at, soft/hard limits, settled/held/available, provider breakdown, warning/last-denial and price_version. Errors: BudgetExceeded, UnknownRate, DuplicateOperation.
 - Authenticated GET /budget/status. BudgetExceeded -> HTTP 429 with code monthly_budget_exhausted, reset date and available estimate; invalid prices -> sanitized 503.
 
-- [ ] **Step 1: Write failing ledger/rate tests.** Cover concurrent boundary admission, duplicate operation IDs, double settlement, no automatic expiry of uncertain holds, invalid/negative/NaN amounts, upward rounding, once-per-month soft warning, restart persistence and month transition at 2026-10-31T16:00:00Z.
+- [x] **Step 1: Write failing ledger/rate tests.** Cover concurrent boundary admission, duplicate operation IDs, double settlement, no automatic expiry of uncertain holds, invalid/negative/NaN amounts, upward rounding, once-per-month soft warning, restart persistence and month transition at 2026-10-31T16:00:00Z.
 
         assert estimate_micro_usd(CostQuote(model="gpt-transcribe", audio_seconds=60)) == 4500
         assert estimate_micro_usd(CostQuote(model="eleven_v4_turbo", characters=1000)) == 40000
@@ -80,12 +80,12 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert status.settled_micro_usd + status.held_micro_usd <= 8_000_000
         assert november_budget.status().month == "2026-11"
 
-- [ ] **Step 2: Run the existing backend suite once as baseline, then tests/test_budget.py.** Record the baseline and confirm new tests fail for the missing interface/behavior.
-- [ ] **Step 3: Implement the interfaces.** Rates dated 2026-10-15: transcription USD 0.0045/minute, Luna USD 0.10/M input and USD 0.50/M output, v4 Turbo USD 0.04/1K characters. Round clip duration upward to whole seconds and count all transmitted characters. Use Decimal and integer microdollars. Reject Luna input bounds >272,000 tokens, avoiding unaccounted long-context multipliers. Apply the 10 percent margin to reservation, not settlement.
+- [x] **Step 2: Run the existing backend suite once as baseline, then tests/test_budget.py.** Record the baseline and confirm new tests fail for the missing interface/behavior.
+- [x] **Step 3: Implement the interfaces.** Rates dated 2026-10-15: transcription USD 0.0045/minute, Luna USD 0.10/M input and USD 0.50/M output, v4 Turbo USD 0.04/1K characters. Round clip duration upward to whole seconds and count all transmitted characters. Use Decimal and integer microdollars. Reject Luna input bounds >272,000 tokens, avoiding unaccounted long-context multipliers. Apply the 10 percent margin to reservation, not settlement.
   Use BEGIN IMMEDIATE for admission and unique operation IDs. A pre-midnight request settles in its original month. Definite unsent work can release; uncertain dispatch remains held indefinitely with attention status. Soft warning counts settled plus held, once per month. Keep budget events independent of a session FK.
   Add validated AI_MONTHLY_SOFT_LIMIT_USD=5, AI_MONTHLY_HARD_LIMIT_USD=8 and AI_BUDGET_TIMEZONE=Asia/Kuala_Lumpur; add tzdata for Windows. No mutation/reset HTTP endpoint.
-- [ ] **Step 4: Run test_budget.py, test_api.py and test_worker_concurrency.py.** Require all pass; verify unauthorized budget reads fail.
-- [ ] **Step 5: Commit ledger, route, configuration and tests.**
+- [x] **Step 4: Run test_budget.py, test_api.py and test_worker_concurrency.py.** Require all pass; verify unauthorized budget reads fail.
+- [x] **Step 5: Commit ledger, route, configuration and tests.**
 
 ## Task 2: Guarded OpenAI Transcription, Answers and Full-Transcript Notes
 
@@ -98,7 +98,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - Defaults: openai_transcription_model=gpt-transcribe, openai_model=gpt-6-luna, openai_answer_model=gpt-6-luna. Answer reasoning none/max output 1000; segment summaries low/2000; final synthesis low/4000.
 - Conservative input quote: UTF-8 bytes of complete serialized instructions/input/schema plus 2048 wrapper tokens. Reject above 272,000; reserve the full configured output-token limit. No image/tool input.
 
-- [ ] **Step 1: Write failing mocked-provider tests.** Assert exact models, no retries, zero calls on cap/key refusal, bounded mono 16 kHz PCM WAV, blank/oversized transcript rejection, billed reasoning usage settlement, timeout/cancellation holds and incomplete output refusal. Pin recent answer context versus full chronological minutes:
+- [x] **Step 1: Write failing mocked-provider tests.** Assert exact models, no retries, zero calls on cap/key refusal, bounded mono 16 kHz PCM WAV, blank/oversized transcript rejection, billed reasoning usage settlement, timeout/cancellation holds and incomplete output refusal. Pin recent answer context versus full chronological minutes:
 
         assert request["model"] == "gpt-6-luna"
         assert request["reasoning"]["effort"] == "none"
@@ -106,12 +106,12 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert any("EARLY_DECISION" in material for material, synthesis in summarizer.calls if not synthesis)
         assert denied_client.calls == []
 
-- [ ] **Step 2: Run test_provider_budget.py plus grounded-answer/minutes tests and confirm intended failures.**
-- [ ] **Step 3: Implement provider-boundary guards.** Validate before reservation; mark dispatched immediately before I/O. AsyncOpenAI uses max_retries=0. Settle response.usage input/output tokens; reasoning is already part of output, not counted twice. Missing usage retains a conservative charge/attention state.
+- [x] **Step 2: Run test_provider_budget.py plus grounded-answer/minutes tests and confirm intended failures.**
+- [x] **Step 3: Implement provider-boundary guards.** Validate before reservation; mark dispatched immediately before I/O. AsyncOpenAI uses max_retries=0. Settle response.usage input/output tokens; reasoning is already part of output, not counted twice. Missing usage retains a conservative charge/attention state.
   Validate WAV channels/width/rate, duration <=15 seconds and <=512 KiB before one audio.transcriptions request with a 20-second deadline and output <=10,000 characters. Use only verified supported hint parameters.
   Keep exact answer schemas/evidence validation and 12 utterances/2,000 characters/eight chunks. Retain existing 30,000-character whole-transcript minutes batching and authoritative appendix. Scope paid contexts around ingest, each summary stage and direct coach/preview calls. Remove gpt-5-only reasoning/output heuristics.
-- [ ] **Step 4: Run test_provider_budget.py, test_grounded_answers.py, test_meeting_service.py, test_minutes.py, test_api.py and test_review_regressions.py.** All network is mocked; early decisions and owner corrections must survive final notes.
-- [ ] **Step 5: Commit guarded OpenAI adapters and defaults.**
+- [x] **Step 4: Run test_provider_budget.py, test_grounded_answers.py, test_meeting_service.py, test_minutes.py, test_api.py and test_review_regressions.py.** All network is mocked; early decisions and owner corrections must survive final notes.
+- [x] **Step 5: Commit guarded OpenAI adapters and defaults.**
 
 ## Task 3: ElevenLabs v4 Turbo Dialogue WebSocket
 
@@ -122,7 +122,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - Production requires the shared budget. Default elevenlabs_model_id=eleven_v4_turbo; preserve configured voice ID.
 - Constants: 30-second overall deadline, 8 MiB MP3 limit, 1-5000 input characters, strict base64 and bounded frames.
 
-- [ ] **Step 1: Write failing fake-socket tests.** Assert exact URL model/output format, one registered voice, complete text, documented close/flush/final marker, and exact concatenated audio bytes. Reject malformed/error/unfinished/oversized output. Hold reservations after possible text acceptance and timeout. No retries/old Flash endpoint; cap or missing key yields zero connections.
+- [x] **Step 1: Write failing fake-socket tests.** Assert exact URL model/output format, one registered voice, complete text, documented close/flush/final marker, and exact concatenated audio bytes. Reject malformed/error/unfinished/oversized output. Hold reservations after possible text acceptance and timeout. No retries/old Flash endpoint; cap or missing key yields zero connections.
   Name the primary case test_v4_dialogue_finalizes_once; its assertions include:
 
         assert socket.registration["voices"] == [settings.elevenlabs_voice_id]
@@ -130,11 +130,11 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert socket.sent[-1] == {"close_socket": True}
         assert result == b"first-second"
 
-- [ ] **Step 2: Run test_voice_provider.py and playback tests; confirm new protocol tests fail.**
-- [ ] **Step 3: Implement the asynchronous Text to Dialogue adapter.** Use xi-api-key header, voices registration, inputs with voice_id/text, close_socket finalization and audio through is_final; close in finally. Add explicit websockets dependency. Redact remote errors.
+- [x] **Step 2: Run test_voice_provider.py and playback tests; confirm new protocol tests fail.**
+- [x] **Step 3: Implement the asynchronous Text to Dialogue adapter.** Use xi-api-key header, voices registration, inputs with voice_id/text, close_socket finalization and audio through is_final; close in finally. Add explicit websockets dependency. Redact remote errors.
   Add paid contexts to every live speech path: /speak, Recall manual say, answers, intro and owner relay. Do not use client.text_to_speech.convert or an ElevenAgents session for v4 Turbo. A post-dispatch failure is possibly charged even if no audio reaches the meeting.
-- [ ] **Step 4: Run test_voice_provider.py, test_provider_budget.py, test_playback.py, test_recall.py and test_api.py.** Both direct and automatic speech denial must produce zero provider calls.
-- [ ] **Step 5: Commit the v4 adapter and speech-path coverage.**
+- [x] **Step 4: Run test_voice_provider.py, test_provider_budget.py, test_playback.py, test_recall.py and test_api.py.** Both direct and automatic speech denial must produce zero provider calls.
+- [x] **Step 5: Commit the v4 adapter and speech-path coverage.**
 
 ## Task 4: Discord Briefings and Additive Session Metadata
 
@@ -146,7 +146,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - Authenticated GET/POST /briefings, PATCH/DELETE /briefings/{id} and POST /briefings/{id}/prepare. Default listing/snapshot accepts ready briefings only; the website can request include_drafts=true to finish a failed upload. Existing /sessions/{id}/knowledge accepts the same text/files for briefings. Metadata edits cannot convert a briefing into attendance.
 - snapshot copies full knowledge into a fresh purpose=meeting/platform=discord session, recording source_briefing_id as provenance. The copy is independent of the template's continued existence.
 
-- [ ] **Step 1: Write failing migration/briefing tests.** Open a literal old-schema database and preserve its rows/text. Test no-URL creation, supported-file validation, zero provider dispatch, explicit Discord-only autocomplete, edits, unknown/deleted IDs, empty snapshot by omission, full text/locators, duplicate content and later source deletion preserving the meeting copy.
+- [x] **Step 1: Write failing migration/briefing tests.** Open a literal old-schema database and preserve its rows/text. Test no-URL creation, supported-file validation, zero provider dispatch, explicit Discord-only autocomplete, edits, unknown/deleted IDs, empty snapshot by omission, full text/locators, duplicate content and later source deletion preserving the meeting copy.
   Name cases test_briefing_copy_survives_source_delete and test_failed_upload_stays_unselectable; assertions include:
 
         assert meeting.platform == "discord" and meeting.purpose == "meeting"
@@ -155,10 +155,10 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert draft.id not in [item.id for item in service.list()]
         assert fake_transport.join_calls == []
 
-- [ ] **Step 2: Run test_briefings.py and test_knowledge_api.py; confirm intended failures.**
-- [ ] **Step 3: Implement additive columns and explicit routes.** Validate platform/purpose combinations; Discord briefings have no URL. Reuse KnowledgeService.copy_into with transaction protection so concurrent template mutation/deletion cannot produce a mixed snapshot. Delete only that briefing's dependent source/chunk/context/event rows in one transaction; retain meeting copies and provenance IDs. Refuse purpose=meeting deletion through this route. Mark ready only after the website completes all requested text/file submissions; failures leave a visible editable draft, excluded from command selection. Retain previously ready versions on an atomic failed edit. Preserve old /sessions clients with optional new fields.
-- [ ] **Step 4: Run test_briefings.py, test_knowledge.py, test_knowledge_api.py, test_platform_scope.py and test_api.py.**
-- [ ] **Step 5: Commit briefing lifecycle and migration.**
+- [x] **Step 2: Run test_briefings.py and test_knowledge_api.py; confirm intended failures.**
+- [x] **Step 3: Implement additive columns and explicit routes.** Validate platform/purpose combinations; Discord briefings have no URL. Reuse KnowledgeService.copy_into with transaction protection so concurrent template mutation/deletion cannot produce a mixed snapshot. Delete only that briefing's dependent source/chunk/context/event rows in one transaction; retain meeting copies and provenance IDs. Refuse purpose=meeting deletion through this route. Mark ready only after the website completes all requested text/file submissions; failures leave a visible editable draft, excluded from command selection. Retain previously ready versions on an atomic failed edit. Preserve old /sessions clients with optional new fields.
+- [x] **Step 4: Run test_briefings.py, test_knowledge.py, test_knowledge_api.py, test_platform_scope.py and test_api.py.**
+- [x] **Step 5: Commit briefing lifecycle and migration.**
 
 ## Task 5: Playback Router and Participant Identity
 
@@ -169,7 +169,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - PlaybackRouter(repository, adapters: Mapping[str, Playback]) implements that contract, selecting SessionView.platform and rejecting purpose=briefing. RecallPlayback implements the full contract.
 - conversation_gate adds participant_id: str | None = None. Compare IDs when both current/prior entries have IDs; fallback to names only where IDs are absent. Public ingestion never grants notification authorization.
 
-- [ ] **Step 1: Write failing fake-adapter tests.** Discord speech must not call Recall; common availability/mute gates must hold; briefings cannot play. Test humans named Alloy, equal display names/different IDs, renamed users/same ID and bot self-ID exclusion.
+- [x] **Step 1: Write failing fake-adapter tests.** Discord speech must not call Recall; common availability/mute gates must hold; briefings cannot play. Test humans named Alloy, equal display names/different IDs, renamed users/same ID and bot self-ID exclusion.
   Name the primary case test_same_display_name_does_not_merge_speakers; assert:
 
         assert other_participant_decision.action == "stay_silent"
@@ -177,10 +177,10 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert recall_adapter.calls == []
         assert discord_adapter.calls == [(sid, "Hello.", "intent-1")]
 
-- [ ] **Step 2: Run playback/conversation/urgency tests; confirm intended failures.**
-- [ ] **Step 3: Implement the router and identity changes.** Remove Recall queue introspection from MeetingService. Use Discord IDs/self flags, retaining the old name fallback only without stable identity. Scope speech paid context to its durable intent key. Preserve freshness, evidence, urgency and owner checks.
-- [ ] **Step 4: Run test_playback.py, test_conversation.py, test_urgency.py, test_grounded_answers.py, test_owner_replies.py and test_recall.py.**
-- [ ] **Step 5: Commit shared transport and identity changes.**
+- [x] **Step 2: Run playback/conversation/urgency tests; confirm intended failures.**
+- [x] **Step 3: Implement the router and identity changes.** Remove Recall queue introspection from MeetingService. Use Discord IDs/self flags, retaining the old name fallback only without stable identity. Scope speech paid context to its durable intent key. Preserve freshness, evidence, urgency and owner checks.
+- [x] **Step 4: Run test_playback.py, test_conversation.py, test_urgency.py, test_grounded_answers.py, test_owner_replies.py and test_recall.py.**
+- [x] **Step 5: Commit shared transport and identity changes.**
 
 ## Task 6: Bounded IPC and Worker Supervision
 
@@ -194,7 +194,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - DiscordWorker(settings, *, process_factory=None): async start() -> None; async run(on_event: Callable[[WorkerEvent], Awaitable[None]]) -> None; async request(command: WorkerCommand, *, timeout: float = 15) -> dict; async close() -> None; health() -> WorkerHealth.
 - Commands: join, leave, mute, stop, play, status, interaction_result. Events: ready, command, autocomplete, owner_reply, utterance, audio_gap, playback, health, disconnected. Interaction tokens stay in Node.
 
-- [ ] **Step 1: Write failing stub-process and Node protocol tests.** Valid RPC; unknown/extra fields; malformed/oversized input; missing IDs; stale generations; timeout/EOF; bounded logs; child reaping. Assert no OPENAI_API_KEY, ELEVENLABS_API_KEY or backend token in child environment.
+- [x] **Step 1: Write failing stub-process and Node protocol tests.** Valid RPC; unknown/extra fields; malformed/oversized input; missing IDs; stale generations; timeout/EOF; bounded logs; child reaping. Assert no OPENAI_API_KEY, ELEVENLABS_API_KEY or backend token in child environment.
   Name cases test_worker_env_and_generation_fence and test_child_reaped_after_eof; assert:
 
         assert "OPENAI_API_KEY" not in child_env
@@ -202,11 +202,11 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert handled_old_generation_events == []
         assert process.returncode is not None
 
-- [ ] **Step 2: Run test_discord_worker.py and Node npm test.** New interface failures must not open a real Gateway.
-- [ ] **Step 3: Implement bounded readers/RPC and ESM validation.** Spawn Node without a shell, explicit script path and sanitized environment. Whitelist OS runtime variables and Discord token; deliver nonsecret settings over the initial config frame. Limits: 16 pending RPCs, 64 KiB diagnostics, health heartbeat every five seconds, lost-worker detection at 15 seconds. Expose safe error codes, not arbitrary remote text. close terminates then kills/reaps only its managed child if required.
+- [x] **Step 2: Run test_discord_worker.py and Node npm test.** New interface failures must not open a real Gateway.
+- [x] **Step 3: Implement bounded readers/RPC and ESM validation.** Spawn Node without a shell, explicit script path and sanitized environment. Whitelist OS runtime variables and Discord token; deliver nonsecret settings over the initial config frame. Limits: 16 pending RPCs, 64 KiB diagnostics, health heartbeat every five seconds, lost-worker detection at 15 seconds. Expose safe error codes, not arbitrary remote text. close terminates then kills/reaps only its managed child if required.
   Add DISCORD_VOICE_ENABLED=false, DISCORD_NODE_EXECUTABLE=node, DISCORD_FFMPEG_EXECUTABLE=ffmpeg and DISCORD_MAX_ATTENDANCE_SECONDS=14400, with readiness checks. Pure protocol tests run before Task 7's Discord dependencies are installed.
-- [ ] **Step 4: Run Python worker and Node protocol tests; confirm stub children exit and no login occurs.**
-- [ ] **Step 5: Commit protocol and bridge.**
+- [x] **Step 4: Run Python worker and Node protocol tests; confirm stub children exit and no login occurs.**
+- [x] **Step 5: Commit protocol and bridge.**
 
 ## Task 7: Node DAVE Voice, Capture and Guild Interaction Adapter
 
@@ -218,7 +218,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - GatewayAdapter({client, transport, emit}) owns deferred ephemeral interactions, autocomplete, member-state events and raw owner-message forwarding. Filter configured guild and bots/webhooks. Python reauthorizes every command.
 - register.mjs exports guildCommands() for /join channel:GuildVoice briefing:string autocomplete, /leave, /mute, /unmute, /stop-speaking, /status and an explicit CLI main. Module imports never log in/register.
 
-- [ ] **Step 1: Write failing fake voice/Gateway and local codec tests.** Voice-only channel and permissions; self/bot ID filtering; 15-second nonoverlapping splits; same-user order; 60-second no-human grace; four-hour maximum; bounded reconnect and complete cleanup. Decode a real local Opus fixture through normalizer and assert mono/16 kHz/16-bit WAV and duration. Broken decode must report audio_gap/unhealthy receiver despite a connected socket.
+- [x] **Step 1: Write failing fake voice/Gateway and local codec tests.** Voice-only channel and permissions; self/bot ID filtering; 15-second nonoverlapping splits; same-user order; 60-second no-human grace; four-hour maximum; bounded reconnect and complete cleanup. Decode a real local Opus fixture through normalizer and assert mono/16 kHz/16-bit WAV and duration. Broken decode must report audio_gap/unhealthy receiver despite a connected socket.
   Name Node cases capture splits at fifteen seconds and decoder failure degrades receive; assert:
 
         assert.equal(wav.sampleRate, 16000);
@@ -227,12 +227,12 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert.ok(clips.every((clip) => clip.duration <= 15));
         assert.equal(health.receiver, 'failed');
 
-- [ ] **Step 2: Run worker npm test and confirm new runtime module/behavior failures.**
-- [ ] **Step 3: Implement and lock runtime.** Pin discord.js 14.27.0 and @discordjs/voice 0.19.2; resolve/lock opusscript as pure-JS Opus fallback and retain DAVE dependency. selfDeaf=false. Per-user streams close after 700 ms silence and split at 15 seconds. Bound active capture buffers to eight; report overflow gaps. Convert PCM through bounded FFmpeg stdin/stdout, without a shell/file paths; construct a finite WAV header from returned PCM.
+- [x] **Step 2: Run worker npm test and confirm new runtime module/behavior failures.**
+- [x] **Step 3: Implement and lock runtime.** Pin discord.js 14.27.0 and @discordjs/voice 0.19.2; resolve/lock opusscript as pure-JS Opus fallback and retain DAVE dependency. selfDeaf=false. Per-user streams close after 700 ms silence and split at 15 seconds. Bound active capture buffers to eight; report overflow gaps. Convert PCM through bounded FFmpeg stdin/stdout, without a shell/file paths; construct a finite WAV header from returned PCM.
   Use createAudioPlayer/createAudioResource for MP3, queue depth two, generation/key deduplication and explicit playback acknowledgements. Complete only on the relevant player completion; stop/mute/leave cancel player and queue. Parent EOF disconnects/exits.
   Intents: Guilds, GuildVoiceStates, GuildMessages, MessageContent. Defer private control replies promptly; autocomplete has a one-second Python deadline and <=25 choices. Unauthorized actors get private refusal. Text content never chooses destinations.
-- [ ] **Step 4: Run worker npm test including actual local codec fixtures.** Validate dependency reports on the installed Node version without a token. Assert tests never call login or registration REST.
-- [ ] **Step 5: Commit locked runtime and tests.**
+- [x] **Step 4: Run worker npm test including actual local codec fixtures.** Validate dependency reports on the installed Node version without a token. Assert tests never call login or registration REST.
+- [x] **Step 5: Commit locked runtime and tests.**
 
 ## Task 8: Durable Attendance and Authorized Owner Commands
 
@@ -244,7 +244,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - Authenticated GET /sessions/{id}/discord-attendance and POST /sessions/{id}/discord-attendance/{action}, action in leave/mute/unmute/stop-speaking. GET /discord/status gains safe readiness/health.
 - Explicit setup CLI uv run python -m meeting_agent.discord_setup runs register.mjs with sanitized environment and configured guild. Do not execute it against Discord in this plan.
 
-- [ ] **Step 1: Write failing fake-worker controller tests.** Owner/guild reauthorization; DMs/Stage/bad briefing; readiness before join; duplicate interactions; same-channel idempotency; other-channel refusal; concurrent joins; full/empty snapshots; startup failure; uncertain join timeout reconciled before another join; no Recall row.
+- [x] **Step 1: Write failing fake-worker controller tests.** Owner/guild reauthorization; DMs/Stage/bad briefing; readiness before join; duplicate interactions; same-channel idempotency; other-channel refusal; concurrent joins; full/empty snapshots; startup failure; uncertain join timeout reconciled before another join; no Recall row.
   Name cases test_join_is_owner_only_and_idempotent and test_uncertain_join_is_reconciled; assert:
 
         assert denied["code"] == "owner_required"
@@ -252,11 +252,11 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert len(worker.join_calls) == 1
         assert recall_store.bot(first["session_id"]) is None
 
-- [ ] **Step 2: Run test_discord_attendance.py, test_briefings.py and test_discord.py; confirm intended failures.**
-- [ ] **Step 3: Implement lifecycle/readiness.** Persist joining intent before RPC, snapshot before voice starts. Require configured provider/Discord keys, Node/FFmpeg/decoder/worker readiness and budget headroom for intro plus first bounded operation. Reconcile uncertain ownership through worker status before another join. Successful private response includes the dashboard link.
+- [x] **Step 2: Run test_discord_attendance.py, test_briefings.py and test_discord.py; confirm intended failures.**
+- [x] **Step 3: Implement lifecycle/readiness.** Persist joining intent before RPC, snapshot before voice starts. Require configured provider/Discord keys, Node/FFmpeg/decoder/worker readiness and budget headroom for intro plus first bounded operation. Reconcile uncertain ownership through worker status before another join. Successful private response includes the dashboard link.
   Bind the Discord playback adapter through the common router and lifespan. Voice enabled -> Node owns Gateway; voice disabled -> existing Python Gateway supports owner replies. No automatic registration/join/rejoin. Recover unfinished attendance/speech as interrupted/attention. No-briefing sessions use existing default names. Web operator-token controls are permitted; no public IPC endpoint.
-- [ ] **Step 4: Run test_discord_attendance.py, test_discord_worker.py, test_briefings.py, test_discord.py and test_api.py.** Without keys startup must not connect/start a real child and Meet/knowledge must stay usable.
-- [ ] **Step 5: Commit attendance and explicit setup tooling.**
+- [x] **Step 4: Run test_discord_attendance.py, test_discord_worker.py, test_briefings.py, test_discord.py and test_api.py.** Without keys startup must not connect/start a real child and Meet/knowledge must stay usable.
+- [x] **Step 5: Commit attendance and explicit setup tooling.**
 
 ## Task 9: Shared Voice Pipeline, Owner Relay and Budget Stop
 
@@ -269,7 +269,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - MinutesService adds pending_budget and deterministic appendix-only preservation when model work is blocked. Its async _stage(session_id: str, fingerprint: str, stage_key: str, material: str, *, synthesis: bool) -> str caches successful stage results in a minutes_stages table keyed by session/fingerprint/stage_key, with attempt IDs linking to paid operations. Uncertain attempts retain their charges; an explicit retry creates a new attempt without rerunning successful stages. A manual minutes request retries explicitly; polling/rollover does not.
 - handle_event normalizes owner message events into the existing OwnerReply model and calls EscalationService.receive_owner_reply. Python's existing user/guild/thread checks remain authoritative.
 
-- [ ] **Step 1: Write failing full-flow tests using real services/fake worker/providers.** Cover join -> transcript -> grounded spoken answer; unknown -> speaker-confirmed urgency -> one question thread -> authorized owner reply -> one associated playback. Cover empty knowledge, unrelated/edited/non-owner replies, same-name participants, mute/cancellation/stale speech, wrong generations/late acknowledgements, budget denial, worker/parent crash, empty calls and capture gaps.
+- [x] **Step 1: Write failing full-flow tests using real services/fake worker/providers.** Cover join -> transcript -> grounded spoken answer; unknown -> speaker-confirmed urgency -> one question thread -> authorized owner reply -> one associated playback. Cover empty knowledge, unrelated/edited/non-owner replies, same-name participants, mute/cancellation/stale speech, wrong generations/late acknowledgements, budget denial, worker/parent crash, empty calls and capture gaps.
   Assert paid calls have ledger provenance, duplicate events add no provider calls, midnight settlement retains the original month, and denied work dispatches no network request.
   Name cases test_urgent_owner_reply_spoken_once and test_hard_cap_leaves_without_paid_notice; assert:
 
@@ -279,12 +279,12 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert provider_calls_after_denial == []
         assert minutes.status(sid)["state"] == "pending_budget"
 
-- [ ] **Step 2: Run test_discord_voice_flow.py; confirm intended integration failures.**
-- [ ] **Step 3: Implement bounded dispatch and routing.** Queue eight waiting items and run two STT calls concurrently. Maintain each speaker's sequence when STT responses finish out of order. Validate generation before STT/ingest/playback; retain speech timestamps and explicit overflow/failure gaps. Emit only final successful MeetingUtterance(platform="discord"); reject bot/self inputs before spending.
+- [x] **Step 2: Run test_discord_voice_flow.py; confirm intended integration failures.**
+- [x] **Step 3: Implement bounded dispatch and routing.** Queue eight waiting items and run two STT calls concurrently. Maintain each speaker's sequence when STT responses finish out of order. Validate generation before STT/ingest/playback; retain speech timestamps and explicit overflow/failure gaps. Emit only final successful MeetingUtterance(platform="discord"); reject bot/self inputs before spending.
   Send intro through the common voice guard and require receiver readiness plus valid intro acknowledgement before claiming full health. Speech intent/generation/question identity must match; an uncertain acknowledgement cannot trigger regeneration.
   On BudgetExceeded at an active Discord paid pipeline boundary, cancel unstarted work, mark budget_stopped and leave without new paid speech. Preserve transcript/questions/replies and pending_budget notes, including already generated partial sections. Cache successful summary stages for explicit retry; do not automatically rerun possibly charged stages. Normal departure uses full-transcript finalization. Discard all raw audio after bounded processing.
-- [ ] **Step 4: Run test_discord_voice_flow.py, test_owner_replies.py, test_minutes.py, test_personal_agent_acceptance.py, test_review_regressions.py and worker npm test.** No stale speech may reach a departed/new call; uncertain delivery remains visible.
-- [ ] **Step 5: Commit the complete offline-tested attendance flow.**
+- [x] **Step 4: Run test_discord_voice_flow.py, test_owner_replies.py, test_minutes.py, test_personal_agent_acceptance.py, test_review_regressions.py and worker npm test.** No stale speech may reach a departed/new call; uncertain delivery remains visible.
+- [x] **Step 5: Commit the complete offline-tested attendance flow.**
 
 ## Task 10: Website Briefings, Platform Status and Budget Visibility
 
@@ -296,18 +296,18 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 - attendanceView(session: Session, bot: Bot | null, discord: DiscordAttendance | null) -> {label, detail, tone, live, canSpeak, canLeave}. A briefing is never live/dispatchable.
 - saveDiscordBriefing(prev: ActionState, form: FormData) saves names/text/files and prepares the completed briefing without launching. backend gains prepareBriefing(id) and listBriefings({includeDrafts: true}) for draft recovery. Preserve existing Meet retry semantics. BudgetPanel accepts server-fetched BudgetStatus; no provider credentials or billing mutations in props.
 
-- [ ] **Step 1: Write failing state/contract tests.** Discord can be live with no Recall Bot; briefings cannot be active; old history remains readable; Discord details do not request /bot; reset/warning/held amounts are truthful; pending_budget never says minutes written; Discord save never calls Recall. Include no-key authoring and actionable cap errors.
+- [x] **Step 1: Write failing state/contract tests.** Discord can be live with no Recall Bot; briefings cannot be active; old history remains readable; Discord details do not request /bot; reset/warning/held amounts are truthful; pending_budget never says minutes written; Discord save never calls Recall. Include no-key authoring and actionable cap errors.
   Name the primary case Discord attendance is live without Recall; assert:
 
         assert.equal(attendanceView(discordSession, null, activeDiscord).live, true);
         assert.equal(attendanceView(briefing, null, null).canSpeak, false);
         assert.equal(attendanceView(briefing, null, null).live, false);
 
-- [ ] **Step 2: Run web npm test and test_discord_web_contract.py; confirm intended failures.**
-- [ ] **Step 3: Implement focused UI in the existing visual style.** Meet retains required URL/scheduling/consent. Discord saves a briefing without URL/schedule, adds requested knowledge, then calls prepare; failed uploads remain labelled drafts and excluded from slash choices. Display /join instructions. List briefings separately, allow metadata edit/delete and preserve meeting copies.
+- [x] **Step 2: Run web npm test and test_discord_web_contract.py; confirm intended failures.**
+- [x] **Step 3: Implement focused UI in the existing visual style.** Meet retains required URL/scheduling/consent. Discord saves a briefing without URL/schedule, adds requested knowledge, then calls prepare; failed uploads remain labelled drafts and excluded from slash choices. Display /join instructions. List briefings separately, allow metadata edit/delete and preserve meeting copies.
   Branch detail loads and server actions by platform; show receiver health/gaps, mute/unmute/stop/leave and stored knowledge/questions without fabricating a Bot. BudgetPanel shows local month/reset, USD 5/8, settled/held/available, provider breakdown and excluded costs. Surface soft warning without Discord pings. pending_budget displays explicit Generate notes. Preserve server-only tokens and sanitized actionable errors.
-- [ ] **Step 4: Run web npm test, npm run typecheck, npm run build, then briefing/web contract backend tests.** Verify with a local fake-backed browser when needed: both creation choices, a Discord record, warning/block states and saved notes. No real provider credentials.
-- [ ] **Step 5: Commit website integration and contract tests.**
+- [x] **Step 4: Run web npm test, npm run typecheck, npm run build, then briefing/web contract backend tests.** Verify with a local fake-backed browser when needed: both creation choices, a Discord record, warning/block states and saved notes. No real provider credentials.
+- [x] **Step 5: Commit website integration and contract tests.**
 
 ## Task 11: Reproducible Setup, Full Verification and Independent Review
 
@@ -336,4 +336,4 @@ Execute Tasks 1-11 in order with Native execution. Tasks 2-3 share the ledger/co
 
 Coverage: model/context bounds Tasks 2-3; briefing migration Task 4; identity/routing Task 5; IPC/audio limits Tasks 6-7; slash authorization/readiness/recovery Task 8; urgency/owner replies/hard stop/full notes Task 9; website/budget visibility Task 10; setup and unverified real-call checks Task 11. Review Focus cases are pinned to their owning task tests.
 
-Plan review is pending. Preserve Native execution after approval. Do not install product dependencies, edit runtime code or start live services before the owner reviews this written plan.
+Plan approved on 15 October 2026. Native implementation proceeds without live provider calls or Discord registration/joins; one whole-branch review gates final completion.
