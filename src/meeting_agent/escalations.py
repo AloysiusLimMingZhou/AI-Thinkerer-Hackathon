@@ -55,7 +55,7 @@ class EscalationService:
         return question
 
     def _same_speaker(self,question,u):
-        if u.speaker=='Unknown participant': return False
+        if u.speaker=='Unknown participant' and not u.participant_id: return False
         if question['participant_id'] and u.participant_id:
             return question['participant_id']==u.participant_id
         return question['speaker'].casefold()==u.speaker.casefold()
@@ -64,7 +64,7 @@ class EscalationService:
         self.store.execute("UPDATE unanswered_questions SET state='urgency_expired',error='Prompt playback failed' WHERE session_id=? AND prompt_key=? AND state='awaiting_urgency'",(sid,key))
 
     def handle_confirmation(self,sid,u):
-        if u.speaker=='Unknown participant' or not u.is_final:
+        if (u.speaker=='Unknown participant' and not u.participant_id) or not u.is_final:
             return None
         text=' '.join(u.text.casefold().replace('’',"'").split())
         negative=bool(re.search(r"\b(?:no rush|don't contact|do not contact|not a priority)\b|^(?:no|nah)\b|\b(?:not|isn't|isnt|don't|dont|do not|doesn't)\b(?:\W+\w+){0,6}\W+urgent\b",text))

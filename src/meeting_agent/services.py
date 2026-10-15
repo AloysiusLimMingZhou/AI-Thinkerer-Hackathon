@@ -78,7 +78,7 @@ def should_answer(
 
 
 def conversation_gate(
-    text, *, speaker, session, transcript, qa_log, force_answer=False
+    text, *, speaker, session, transcript, qa_log, force_answer=False, participant_id=None
 ):
     """Keep a brief reply window for the same speaker, without listening to everyone."""
     approved, reason = should_answer(
@@ -90,7 +90,11 @@ def conversation_gate(
     if approved or len(transcript) < 2:
         return approved, reason
     previous, current = transcript[-2:]
-    if speaker == "Unknown participant" or previous.speaker != speaker:
+    if participant_id and previous.participant_id:
+        same_speaker = participant_id == previous.participant_id
+    else:
+        same_speaker = speaker != "Unknown participant" and previous.speaker == speaker
+    if not same_speaker:
         return False, reason
     gap = (current.spoken_at - previous.spoken_at).total_seconds()
     if not 0 <= gap <= 30:

@@ -1,5 +1,5 @@
 import time
-from typing import Protocol
+from typing import Protocol, Mapping
 from fastapi import HTTPException
 from .budget import PaidCallContext, paid_call_context
 
@@ -7,6 +7,8 @@ from .budget import PaidCallContext, paid_call_context
 class Playback(Protocol):
     async def enqueue(self,session_id: str,text: str,key: str) -> str: ...
     async def is_live(self,session_id: str) -> bool: ...
+    def muted(self,session_id: str) -> bool: ...
+    def available(self,session_id: str) -> bool: ...
     async def mute(self,session_id: str,muted: bool) -> None: ...
     async def stop(self,session_id: str) -> None: ...
 
@@ -57,7 +59,28 @@ class RecallPlayback:
 
 
 class PreviewPlayback:
+    def muted(self,sid): return False
+    def available(self,sid): return True
     async def is_live(self,sid): return False
     async def enqueue(self,sid,text,key): return key
     async def mute(self,sid,muted): pass
     async def stop(self,sid): pass
+
+
+class PlaybackRouter:
+    def __init__(self,repository,adapters: Mapping[str,Playback]):
+        self.repository=repository
+        self.adapters=dict(adapters)
+
+    def adapter(self,sid):
+        session=self.repository.get_session(sid)
+        if session.purpose!='meeting' or session.platform not in self.adapters:
+            raise HTTPException(409,'No playback transport for this session')
+        return self.adapters[session.platform]
+
+    async def enqueue(self,sid,text,key): return await self.adapter(sid).enqueue(sid,text,key)
+    async def is_live(self,sid): return await self.adapter(sid).is_live(sid)
+    def muted(self,sid): return self.adapter(sid).muted(sid)
+    def available(self,sid): return self.adapter(sid).available(sid)
+    async def mute(self,sid,muted): await self.adapter(sid).mute(sid,muted)
+    async def stop(self,sid): await self.adapter(sid).stop(sid)

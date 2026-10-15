@@ -5,7 +5,7 @@ import hmac
 from uuid import uuid4
 from .meeting_service import MeetingService, grounded_result
 from .meeting_models import MeetingUtterance
-from .playback import RecallPlayback
+from .playback import RecallPlayback, PlaybackRouter
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import (
@@ -90,7 +90,7 @@ def create_app(
     knowledge = KnowledgeService(repository)
     briefings = BriefingService(repository, knowledge)
     recall = RecallService(settings, repository, brain, voice, recall_transport)
-    playback = RecallPlayback(recall)
+    playback = PlaybackRouter(repository, {'google_meet': RecallPlayback(recall)})
     meeting = MeetingService(repository, brain, knowledge, playback)
     recall.meeting = meeting
     escalations=EscalationService(repository,meeting)

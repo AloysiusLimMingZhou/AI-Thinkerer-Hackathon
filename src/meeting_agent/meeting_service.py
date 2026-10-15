@@ -68,7 +68,7 @@ class MeetingService:
             if prior:
                 return AgentDecision.model_validate_json(prior['decision']) if prior['decision'] else AgentDecision(action='stay_silent',reason='Interrupted input needs attention')
             db.execute('INSERT INTO meeting_inputs VALUES(?,?,?,NULL)',(key,sid,'processing'))
-        is_self=u.is_self or u.speaker.casefold() in {session.agent_name.casefold(),f'{session.agent_name} (AI delegate)'.casefold()}
+        is_self=u.is_self or (not u.participant_id and u.speaker.casefold() in {session.agent_name.casefold(),f'{session.agent_name} (AI delegate)'.casefold()})
         if is_self:
             decision=AgentDecision(action='stay_silent',reason='agent own voice')
             self._decision(sid,key,decision)
@@ -86,7 +86,7 @@ class MeetingService:
                 self._decision(sid,key,confirmation,entry.id)
                 await self.queue_speech(sid,confirmation.answer or '',key)
                 return confirmation
-        approved,reason=conversation_gate(u.text,speaker=u.speaker,session=session,transcript=history,qa_log=qa,force_answer=u.force_answer)
+        approved,reason=conversation_gate(u.text,speaker=u.speaker,participant_id=u.participant_id,session=session,transcript=history,qa_log=qa,force_answer=u.force_answer)
         if not u.is_final and not u.force_answer:
             approved,reason=False,'waiting for final caption'
         if not preview:
@@ -96,9 +96,8 @@ class MeetingService:
                 approved,reason=False,'meeting ended'
             elif getattr(self.playback,'muted',lambda _:False)(sid):
                 approved,reason=False,'speech muted'
-            elif hasattr(self.playback,'recall'):
-                pending=self.playback.recall.store.one("SELECT COUNT(*) AS n FROM recall_audio WHERE session_id=? AND expires>? AND state IN ('queued','playing')",(sid,time.time()))['n']
-                if pending>=2: approved,reason=False,'reply queue full'
+            elif not self.playback.available(sid):
+                approved,reason=False,'reply queue full'
         if not approved:
             decision=AgentDecision(action='stay_silent',reason=reason)
             self._decision(sid,key,decision,entry.id)
