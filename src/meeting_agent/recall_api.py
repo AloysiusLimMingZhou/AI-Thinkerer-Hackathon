@@ -96,6 +96,8 @@ def router_for(service: RecallService):
         if payload.join_at and payload.join_at > datetime.now(UTC) + timedelta(days=28):
             raise HTTPException(422, "Schedule within 28 days")
         session = session_or_404(session_id)
+        if session.platform != 'google_meet' or session.purpose != 'meeting':
+            raise HTTPException(409, 'Recall dispatch is only for Google Meet meetings')
         return service.launch(
             session,
             payload.idempotency_key,

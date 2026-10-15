@@ -28,6 +28,8 @@ from .discord_api import discord_router
 from .minutes import MinutesService
 from .knowledge import KnowledgeService
 from .knowledge_api import knowledge_router
+from .briefings import BriefingService
+from .briefing_api import briefing_router
 from .integrations import (
     ContextImporter,
     IntegrationError,
@@ -86,6 +88,7 @@ def create_app(
     oauth = OAuthManager(settings, repository, provider_requester)
     context_importer = ContextImporter(oauth)
     knowledge = KnowledgeService(repository)
+    briefings = BriefingService(repository, knowledge)
     recall = RecallService(settings, repository, brain, voice, recall_transport)
     playback = RecallPlayback(recall)
     meeting = MeetingService(repository, brain, knowledge, playback)
@@ -136,6 +139,8 @@ def create_app(
 
     app.state.recall = recall
     app.state.knowledge = knowledge
+    app.state.briefings = briefings
+    app.include_router(briefing_router(briefings))
     app.state.meeting = meeting
     app.state.playback = playback
     app.state.escalations = escalations
@@ -222,6 +227,12 @@ def create_app(
         session = repository.get_session(session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
+        return session
+
+    def require_meeting(session_id: str):
+        session = require_session(session_id)
+        if session.purpose != "meeting":
+            raise HTTPException(409, "This is a briefing; use /join to create a meeting")
         return session
 
     @app.get('/sessions/{session_id}/questions',tags=['meeting'])
@@ -373,7 +384,7 @@ def create_app(
     async def ingest_utterance(
         session_id: str, payload: UtteranceCreate
     ) -> AgentDecision:
-        require_session(session_id)
+        require_meeting(session_id)
         return await meeting.ingest(session_id,MeetingUtterance(
             event_id=payload.event_id or str(uuid4()),platform="preview",
             participant_id=payload.participant_id,speaker=payload.speaker,
@@ -386,7 +397,7 @@ def create_app(
         tags=["meeting"],
     )
     async def coach(session_id: str, payload: CoachRequest) -> CoachSuggestion:
-        session = require_session(session_id)
+        session = require_meeting(session_id)
         query = " ".join(
             item for item in (payload.latest_message, payload.objective) if item
         )
@@ -417,7 +428,7 @@ def create_app(
 
     @app.post("/sessions/{session_id}/speak", tags=["voice"])
     async def speak(session_id: str, payload: SpeakRequest) -> Response:
-        require_session(session_id)
+        require_meeting(session_id)
         try:
             with paid_call_context(PaidCallContext(session_id, str(uuid4()), 'manual-speech')):
                 audio = await voice.generate(payload.text)
@@ -436,7 +447,7 @@ def create_app(
         tags=["minutes"],
     )
     async def generate_minutes(session_id: str) -> MinutesView:
-        require_session(session_id)
+        require_meeting(session_id)
         transcript_entries = recall.final_transcript(
             session_id
         ) or repository.get_transcript(session_id)
