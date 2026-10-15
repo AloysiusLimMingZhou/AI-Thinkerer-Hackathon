@@ -17,7 +17,7 @@ export function Readiness({ status, health, discord }: { status: RecallStatus; h
   return (
     <section className={styles.panel} aria-labelledby="ready-title">
       <h2 id="ready-title" className={styles.title}>
-        {status.configured ? "Ready to join meetings" : `${missing.size} backend ${missing.size === 1 ? "setting is" : "settings are"} missing`}
+        {status.configured ? "Google Meet settings configured" : `${missing.size} backend ${missing.size === 1 ? "setting is" : "settings are"} missing`}
       </h2>
       <ul className={styles.list}>
         {SETTINGS.map((s) => {
@@ -40,11 +40,11 @@ export function Readiness({ status, health, discord }: { status: RecallStatus; h
         Set these in the backend’s <code>.env</code> and restart it. Being set isn’t the same as working: run a private test call before the demo.
         {health && !health.openai_configured && " Without OpenAI, it can’t answer or write minutes."}
       </p>
-      <h3>Discord urgent questions</h3>
+      <h3>Discord voice and urgent questions</h3>
       <p className={styles.note}>
         {discord?.configured ? `Owner reply connection: ${discord.gateway}.` : "Discord escalation needs configuration."}
         {discord && discord.missing.length > 0 && ` Set ${discord.missing.join(", ")}.`}
-        {" Replies from your question threads are spoken in the associated meeting. Discord voice /join is planned for the next phase."}
+        {" Replies from your question threads are spoken in the associated meeting. Use /join with a voice channel and an optional prepared briefing. You can author briefings before adding keys."}
       </p>
     </section>
   );

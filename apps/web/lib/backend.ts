@@ -1,5 +1,5 @@
 import "server-only";
-import type { AgentDecision, BackendEvent, Bot, ContextNote, DiscordStatus, Finalization, Health, Minutes, RecallStatus, Session, TranscriptEntry, UnansweredQuestion } from "./api-types";
+import type { BudgetStatus, DiscordAttendanceStatus, AgentDecision, BackendEvent, Bot, ContextNote, DiscordStatus, Finalization, Health, Minutes, RecallStatus, Session, TranscriptEntry, UnansweredQuestion } from "./api-types";
 
 /**
  * Server-side client for the Alloy backend, per docs/BACKEND_HANDOFF.md:
@@ -29,7 +29,8 @@ export function backendUrl(): string {
 function describe(detail: unknown): string {
   if (typeof detail === "string") return detail;
   if (detail && typeof detail === "object") {
-    const d = detail as { missing?: unknown };
+    const d = detail as { missing?: unknown; code?: string; reset_at?: string };
+    if (d.code === 'monthly_budget_exhausted') return `The monthly AI budget cannot cover this request. Notes are saved. Generate notes manually after the reset (${d.reset_at || 'next month'}) or an operator configuration change.`;
     if (Array.isArray(d.missing)) return `Missing configuration: ${d.missing.join(", ")}`;
     if (Array.isArray(detail)) {
       // FastAPI validation errors: [{loc, msg}]
@@ -85,6 +86,14 @@ async function maybe<T>(path: string): Promise<T | null> {
 }
 
 export const backend = {
+  budgetStatus: () => call<BudgetStatus>('/budget/status'),
+  listBriefings: (options: {includeDrafts?: boolean} = {}) => call<Session[]>(`/briefings?include_drafts=${!!options.includeDrafts}`),
+  createBriefing: (body: {title:string;owner_name:string;agent_name:string}) => call<Session>('/briefings',{method:'POST',json:body}),
+  updateBriefing: (id:string,body:{title:string;owner_name:string;agent_name:string}) => call<Session>(`/briefings/${encodeURIComponent(id)}`,{method:'PATCH',json:body}),
+  prepareBriefing: (id:string) => call<Session>(`/briefings/${encodeURIComponent(id)}/prepare`,{method:'POST'}),
+  deleteBriefing: (id:string) => call<void>(`/briefings/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  discordAttendance: (id:string) => call<DiscordAttendanceStatus>(`/sessions/${encodeURIComponent(id)}/discord-attendance`),
+  discordControl: (id:string,action:'leave'|'mute'|'unmute'|'stop-speaking') => call<{ok:boolean;code?:string}>(`/sessions/${encodeURIComponent(id)}/discord-attendance/${action}`,{method:'POST'}),
   finalization: (id: string) => call<Finalization>(`/sessions/${encodeURIComponent(id)}/finalization`),
   discordStatus: () => call<DiscordStatus>("/discord/status"),
   questions: (id: string) => call<UnansweredQuestion[]>(`/sessions/${encodeURIComponent(id)}/questions`),

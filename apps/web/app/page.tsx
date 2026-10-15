@@ -5,6 +5,9 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 import { LogSearch } from "@/components/LogSearch";
 import { MiniStrip } from "@/components/MiniStrip";
 import { Readiness } from "@/components/Readiness";
+import { BudgetPanel } from "@/components/BudgetPanel";
+import {attendanceView,loadAttendance} from "@/lib/attendance";
+import type {DiscordAttendance} from "@/lib/api-types";
 import { SendForm } from "@/components/SendForm";
 import type { BackendEvent, Bot, Health, RecallStatus, Session, TranscriptEntry } from "@/lib/api-types";
 import { backend } from "@/lib/backend";
@@ -21,6 +24,7 @@ const RECENT = 30;
 interface Row {
   session: Session;
   bot: Bot | null;
+  discord: DiscordAttendance | null;
   tl: Timeline | null;
   lines: number;
   answers: number;
@@ -28,8 +32,8 @@ interface Row {
 }
 
 async function loadRow(session: Session): Promise<Row> {
-  const [bot, transcript, events, finalization] = await Promise.all([
-    backend.bot(session.id).catch(() => null),
+  const [attendance, transcript, events, finalization] = await Promise.all([
+    loadAttendance(session,backend),
     backend.transcript(session.id).catch((): TranscriptEntry[] => []),
     backend.events(session.id).catch((): BackendEvent[] => []),
     backend.finalization(session.id),
@@ -37,11 +41,12 @@ async function loadRow(session: Session): Promise<Row> {
   const answers = answersFrom(events);
   return {
     session,
-    bot,
+    bot:attendance.bot,
+    discord:attendance.discord,
     tl: timeline(transcript, answers, silencesFrom(events)),
     lines: transcript.filter((t) => t.is_final).length,
     answers: answers.length,
-    processing: shouldRefresh(session, bot, finalization),
+    processing: attendanceView(session,attendance.bot,attendance.discord).live || finalization.state==='processing',
   };
 }
 
@@ -66,9 +71,9 @@ export default async function HomePage() {
     return <BackendDown error={e} />;
   }
 
-  const rows = await Promise.all(sessions.slice(0, RECENT).map(loadRow));
-  const discord = await backend.discordStatus().catch(() => null);
-  const live = rows.find((r) => inCall(r.bot) || r.session.status === "active");
+  const meetings=sessions.filter(s=>s.purpose!=='briefing');
+  const [rows,discord,budget,briefings]=await Promise.all([Promise.all(meetings.slice(0,RECENT).map(loadRow)),backend.discordStatus().catch(()=>null),backend.budgetStatus(),backend.listBriefings({includeDrafts:true})]);
+  const live = rows.find(r=>attendanceView(r.session,r.bot,r.discord).live);
   const pending = rows.some((r) => r.processing);
   const agent = live?.session.agent_name ?? sessions[0]?.agent_name ?? DEFAULT_AGENT;
   const attended = rows.filter((r) => r.lines > 0).length;
@@ -144,7 +149,8 @@ export default async function HomePage() {
               </>
             )}
           </div>
-          {sessions.length > RECENT && <p className={styles.more}>Showing the {RECENT} most recent of {sessions.length} meetings.</p>}
+          {meetings.length > RECENT && <p className={styles.more}>Showing the {RECENT} most recent of {meetings.length} meetings.</p>}
+          <section className={styles.briefings} aria-labelledby="briefings-title"><h2 id="briefings-title">Discord briefings</h2><p>Prepare knowledge here, then select it with /join in Discord.</p>{briefings.length===0?<p>No briefings yet. Choose Discord briefing in the form.</p>:<ul>{briefings.map(b=><li key={b.id}><Link href={`/meetings/${b.id}`}>{b.title}</Link><span>{b.briefing_ready?'Prepared':'Draft · finish knowledge'}</span></li>)}</ul>}</section>
         </section>
 
         <aside className={styles.side}>
@@ -154,6 +160,7 @@ export default async function HomePage() {
             </h2>
             <SendForm ready={status.configured} />
           </section>
+          <BudgetPanel status={budget}/>
           <Readiness status={status} health={health} discord={discord} />
         </aside>
       </div>
@@ -163,9 +170,9 @@ export default async function HomePage() {
 
 function MeetingRow({ row, scale }: { row: Row; scale: number }) {
   const { session: s, bot, tl } = row;
-  const state = botState(bot, s.agent_name, bot?.join_at ? `${clock(bot.join_at)} on ${shortDay(bot.join_at)}` : undefined);
-  const platform = platformOf(s.meeting_url);
-  const onAir = inCall(bot);
+  const state = attendanceView(s,bot,row.discord);
+  const platform = s.platform==='discord'?{name:'Discord'}:platformOf(s.meeting_url);
+  const onAir = state.canSpeak;
 
   return (
     <li className={styles.row} data-search={[s.title, s.owner_name, s.agent_name, platform?.name ?? ""].join(" ").toLowerCase()}>

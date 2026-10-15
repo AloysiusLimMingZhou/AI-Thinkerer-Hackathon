@@ -3,6 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { addNote, launchBot, leaveMeeting, sayInMeeting, tryLine, writeMinutes } from "@/app/actions";
 import { BackendDown } from "@/components/BackendDown";
+import {BudgetPanel} from "@/components/BudgetPanel";
+import {DiscordAttendancePanel} from "@/components/DiscordAttendancePanel";
+import {BriefingEditor} from "@/components/BriefingEditor";
+import {attendanceView,loadAttendance} from "@/lib/attendance";
+import type {DiscordAttendance,BudgetStatus} from "@/lib/api-types";
 import { BotPanel } from "@/components/BotPanel";
 import { CopyButton } from "@/components/CopyButton";
 import { DownloadMenu, type DownloadOption } from "@/components/DownloadMenu";
@@ -48,6 +53,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 interface Loaded {
   session: Session;
   bot: Bot | null;
+  discord: DiscordAttendance | null;
+  budget: BudgetStatus;
   transcript: TranscriptEntry[];
   events: BackendEvent[];
   minutes: Minutes | null;
@@ -59,8 +66,12 @@ interface Loaded {
 async function load(id: string): Promise<Loaded | null> {
   const session = await backend.getSession(id);
   if (!session) return null;
-  const [bot, transcript, events, minutes, knowledge, questions, finalization] = await Promise.all([backend.bot(id), backend.transcript(id), backend.events(id), backend.minutes(id), backend.knowledge(id), backend.questions(id), backend.finalization(id)]);
-  return { session, bot, transcript, events, minutes, knowledge, questions, finalization };
+  if(session.purpose==='briefing') {
+    const [knowledge,budget]=await Promise.all([backend.knowledge(id),backend.budgetStatus()]);
+    return {session,bot:null,discord:null,budget,knowledge,transcript:[],events:[],minutes:null,questions:[],finalization:{session_id:id,state:'idle',error:null}};
+  }
+  const [attendance, transcript, events, minutes, knowledge, questions, finalization,budget] = await Promise.all([loadAttendance(session,backend), backend.transcript(id), backend.events(id), backend.minutes(id), backend.knowledge(id), backend.questions(id), backend.finalization(id),backend.budgetStatus()]);
+  return { session, ...attendance, budget, transcript, events, minutes, knowledge, questions, finalization };
 }
 
 export default async function MeetingPage({ params, searchParams }: Params) {
@@ -82,10 +93,11 @@ export default async function MeetingPage({ params, searchParams }: Params) {
   const notes = data.knowledge.map((item) => ({ ...item, content: item.preview }));
   const lines = mergedTranscript(transcript, answers, agent);
   const tl = timeline(transcript, answers, silences);
-  const live = isLive(session, bot);
+  const attendance=attendanceView(session,bot,data.discord);
+  const live = attendance.live;
   const platform = platformOf(session.meeting_url);
   const when = bot?.join_at ? `${clock(bot.join_at)} on ${shortDay(bot.join_at)}` : undefined;
-  const state = botState(bot, agent, when);
+  const state = attendance;
   const stateLabel = (code: string) => botState(bot ? { ...bot, state: code } : null, agent).label;
   const finishedTranscript = events.some((e) => e.type === "transcript.saved");
 
@@ -115,7 +127,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
     ? { label: "Minutes", hint: ".md", href: `/meetings/${session.id}/minutes`, filename: exportFilename(session, "minutes", "md") }
     : undefined;
 
-  const sourceNote = finishedTranscript
+  const sourceNote = session.platform==='discord' ? `Discord voice transcription, labelled by participant. ${agent}'s replies are merged from the answer log. Capture gaps appear in activity.` : finishedTranscript
     ? `Recall’s final transcript, saved after the call. ${agent}’s answers are merged in from its answer log.`
     : bot
       ? `Live captions from Recall as they arrive. After the call they’re replaced by Recall’s final transcript. ${agent}’s answers are merged in.`
@@ -123,9 +135,11 @@ export default async function MeetingPage({ params, searchParams }: Params) {
 
   const initialView = isView(view) ? view : minutes ? "summary" : lines.length > 0 ? "said" : "briefing";
 
+  if(session.purpose==='briefing')return <main className={styles.page}><Link href="/">All meetings and briefings</Link><div className={styles.layout}><div className="sheet"><BriefingEditor session={session}/><BriefingPanel notes={notes} agent={agent} add={addNote.bind(null,session.id)}/></div><aside className={styles.aside}><BudgetPanel status={data.budget}/></aside></div></main>;
+
   return (
     <main className={styles.page}>
-      {shouldRefresh(session, bot, data.finalization) && <LiveRefresh every={3000} />}
+      {(live || data.finalization.state==='processing') && <LiveRefresh every={3000} />}
       <nav className={styles.crumbs} aria-label="Meetings">
         <Link href="/" className={styles.back}>
           <Icon name="chevronLeft" size={16} /> All meetings
@@ -157,7 +171,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
 
       <div className={styles.layout}>
         <div className={`sheet ${styles.record}`}>
-          <BotPanel
+          {session.platform==='discord' ? <DiscordAttendancePanel session={session} attendance={data.discord} gaps={events.filter(e=>e.type==='discord.audio_gap').map(e=>`${String(e.payload.spoken_at||e.created_at)}: ${String(e.payload.reason||'Audio unavailable')}`)}/> : <BotPanel
             agent={agent}
             owner={session.owner_name}
             label={state.label}
@@ -171,7 +185,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
             launch={launchBot.bind(null, session.id)}
             leave={leaveMeeting.bind(null, session.id)}
             say={sayInMeeting.bind(null, session.id)}
-          />
+          />}
           <MeetingRecord
             initialView={initialView}
             labels={{
@@ -183,7 +197,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
             }}
             score={tl ? <MeetingScore key="score" data={scoreData(tl, agent)} /> : null}
             panels={{
-              summary: <MinutesPanel key="summary" minutes={minutes} finalization={data.finalization} agent={agent} hasTranscript={transcript.length > 0} write={writeMinutes.bind(null, session.id)} />,
+              summary: <MinutesPanel key="summary" minutes={minutes} finalization={data.finalization} agent={agent} hasTranscript={transcript.length > 0} platform={session.platform} write={writeMinutes.bind(null, session.id)} />,
               said: <AnswersPanel key="said" answers={answers} silences={silences} playbacks={manualPlaybacks(events)} questions={data.questions} agent={agent} />,
               transcript: (
                 <TranscriptPanel
@@ -201,6 +215,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
         </div>
 
         <aside className={styles.aside}>
+          <BudgetPanel status={data.budget}/>
           <section aria-labelledby="delegate-title">
             <h2 id="delegate-title">The delegate</h2>
             <dl className={styles.facts}>
@@ -264,7 +279,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
           )}
 
           <p className={styles.asideNote}>
-            A meeting supports one launch. To send {agent} again, even to the same link, <Link href="/">start a new meeting</Link>.
+            {session.platform==='discord'?'Use /join in Discord to start a new meeting after leaving.':'A meeting supports one launch. Start a new meeting to send the delegate again.'}
           </p>
         </aside>
       </div>

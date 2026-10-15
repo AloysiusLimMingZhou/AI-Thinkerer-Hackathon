@@ -32,6 +32,7 @@ export function inCall(bot: Bot | null): boolean {
 
 /** Whether the page should keep polling: a bot is on its way, in the call, or the meeting is active. */
 export function isLive(session: Session, bot: Bot | null): boolean {
+  if (session.purpose==='briefing') return false;
   if (bot) return !isFinal(bot);
   return session.status === "active";
 }
@@ -288,6 +289,12 @@ export function activityFrom(events: BackendEvent[], agent: string, stateLabel: 
         break;
       case "minutes.processing":
         out.push({ ...base, title: "Processing meeting notes", tone: "waiting" });
+        break;
+      case "minutes.pending_budget":
+        out.push({...base,title:'Notes awaiting AI budget',detail:'Transcript saved. Generate notes manually after reset.',tone:'waiting'});
+        break;
+      case "discord.audio_gap":
+        out.push({...base,title:'Capture gap',detail:String(p.reason||'Audio unavailable'),tone:'problem'});
         break;
       case "minutes.failed":
         out.push({ ...base, title: "Minutes need attention", detail: String(p.error ?? "Retry minutes after checking the backend."), tone: "problem" });
