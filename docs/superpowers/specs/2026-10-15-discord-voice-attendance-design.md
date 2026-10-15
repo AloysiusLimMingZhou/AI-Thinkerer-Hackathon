@@ -1,7 +1,7 @@
 # Discord voice attendance and monthly API budget
 
 Date: 15 October 2026 (Asia/Kuala_Lumpur).
-Status: proposed design, awaiting written-spec approval. No voice attendance or budget implementation is claimed by this document.
+Status: approved by the owner on 15 October 2026, including the transcript-context clarification below. Written implementation-plan review is next. No voice attendance or budget implementation is claimed by this document.
 Builds on the approved personal-meeting-agent design dated 14 October 2026 and the merged foundation in PR #3.
 
 ## Owner requirements and success
@@ -52,7 +52,7 @@ Decode Opus locally and normalize to mono 16 kHz PCM WAV. Close utterances on a 
 
 Call gpt-transcribe on completed utterance clips, then pass final text through MeetingService with platform=discord, stable event/participant IDs and actual speech timestamps. Do not substitute file-completion time for speech time to make old speech appear fresh. Preserve late transcripts for notes while suppressing stale answers. A transcription failure or queue overflow records a visible gap with time and speaker, rather than fabricated transcript text or silent success.
 
-Do not send all listening audio to Luna. The existing local address gate runs on the transcript before requesting an answer. Answers require supplied meeting knowledge and verified excerpts; unsupported questions use the existing exact unknown prompt and urgency flow. Any necessary names or domain hints for transcription are bounded reference data, never instructions that can change recipients, permissions or answering policy.
+Do not send all listening audio to Luna. For live answers, send the current question, at most eight relevant briefing chunks, and only the latest 12 dialogue utterances with at most 2,000 characters each; do not attach the full meeting transcript. The existing local address gate runs on the transcript before requesting an answer. For final notes, process the complete chronological transcript in sections of at most 30,000 characters and combine section summaries, preserving the deterministic tracked-question and owner-reply appendix. These are distinct answer and minutes contexts, as clarified and approved by the owner. Answers require supplied meeting knowledge and verified excerpts; unsupported questions use the existing exact unknown prompt and urgency flow. Any necessary names or domain hints for transcription are bounded reference data, never instructions that can change recipients, permissions or answering policy.
 
 Route both platforms through a PlaybackRouter with shared liveness, mute, queue availability, enqueue and stop contracts. Remove Recall-specific queue inspection from MeetingService. The Discord adapter checks the associated call generation before generating speech and again before playback. Voice queue depth is two. Stable speech intent IDs and playback acknowledgements update existing durable intent/owner-relay state. Acknowledgements distinguish queued, playing, completed, failed and cancelled; only confirmed playback completes delivery.
 
@@ -123,4 +123,4 @@ Always detach receive subscriptions, stop the player, destroy the voice connecti
 - [discord.js voice 0.19.2](https://discord.js.org/docs/packages/voice/0.19.2) and [voice package changelog](https://github.com/discordjs/discord.js/blob/main/packages/voice/CHANGELOG.md).
 - [Python receive extension DAVE issue](https://github.com/imayhaveborkedit/discord-ext-voice-recv/issues/64).
 
-Self-review: concrete model IDs, budget scope, no-key development, migration, side effects, identity, transport recovery, cap behavior and verification boundaries are specified. No product dependencies or runtime code are changed by this draft. Written-spec review and the subsequent written implementation-plan review remain outstanding.
+Self-review: concrete model IDs, budget scope, no-key development, migration, side effects, identity, transport recovery, cap behavior and verification boundaries are specified. No product dependencies or runtime code are changed by this draft. Written-spec approval is recorded above; written implementation-plan review remains outstanding.
