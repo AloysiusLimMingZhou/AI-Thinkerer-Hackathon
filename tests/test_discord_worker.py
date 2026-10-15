@@ -65,3 +65,19 @@ async def test_timeout_is_uncertain_and_pending_is_bounded():
         with pytest.raises(WorkerUnavailable): await worker.request(command('leave',session_id='s',generation='g'),timeout=.02)
         assert not worker.pending
     finally: await worker.close(); await runner
+
+
+@pytest.mark.asyncio
+async def test_event_handler_can_request_rpc_without_blocking_reader():
+    async def factory(*args,**kw):
+        return await asyncio.create_subprocess_exec(sys.executable,str(Path(__file__).parent/'fixtures/discord_worker_stub.py'),**kw)
+    worker=DiscordWorker(Settings(discord_bot_token='fake'),process_factory=factory)
+    done=asyncio.Event()
+    async def handler(e):
+        assert (await worker.request(command('status'),timeout=.2))['ok']
+        done.set()
+    await worker.start();runner=asyncio.create_task(worker.run(handler))
+    try:
+        await worker.request(command('status',request_id='trigger'))
+        await asyncio.wait_for(done.wait(),.5)
+    finally:await worker.close();await runner

@@ -15,6 +15,7 @@ class DiscordWorker:
         self._health=WorkerHealth()
         self.last_health=0
         self._tasks=[]
+        self._event_tasks=set()
         self._closing=False
         self._write_lock=asyncio.Lock()
 
@@ -84,12 +85,21 @@ class DiscordWorker:
                     self.last_health=time.monotonic()
                     if event.type=='health': self._health=event
                     else: self._health=WorkerHealth(gateway=event.gateway,decoder=event.decoder)
-                await on_event(event)
+                if len(self._event_tasks)>=16: break
+                task=asyncio.create_task(self._handle(on_event,event))
+                self._event_tasks.add(task)
+                task.add_done_callback(self._event_tasks.discard)
         finally:
             self._health=WorkerHealth()
             for future in self.pending.values():
                 if not future.done(): future.set_exception(WorkerUnavailable('worker_lost'))
             if not self._closing: await self.close()
+
+    async def _handle(self,on_event,event):
+        try: await on_event(event)
+        except Exception:
+            self.diagnostics.extend(b'event_handler_failed\\n')
+            del self.diagnostics[:-65536]
 
     def health(self):
         if not self.process or self.process.returncode is not None or time.monotonic()-self.last_health>15: return WorkerHealth()
@@ -98,7 +108,7 @@ class DiscordWorker:
     async def close(self):
         self._closing=True
         current=asyncio.current_task()
-        for task in self._tasks:
+        for task in [*self._tasks,*self._event_tasks]:
             if task is not current: task.cancel()
         if self.process:
             if self.process.stdin: self.process.stdin.close()
@@ -107,5 +117,5 @@ class DiscordWorker:
                 self.process.terminate()
                 try: await asyncio.wait_for(self.process.wait(),2)
                 except TimeoutError: self.process.kill(); await self.process.wait()
-        await asyncio.gather(*(t for t in self._tasks if t is not current),return_exceptions=True)
+        await asyncio.gather(*(t for t in [*self._tasks,*self._event_tasks] if t is not current),return_exceptions=True)
         self._health=WorkerHealth()

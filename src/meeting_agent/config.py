@@ -21,6 +21,7 @@ class Settings:
     database_path: Path = Path("data/meeting_agent.db")
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
     app_base_url: str = "http://localhost:8000"
+    web_base_url: str = 'http://localhost:3000'
     oauth_encryption_key: str | None = None
     google_client_id: str | None = None
     google_client_secret: str | None = None
@@ -102,6 +103,7 @@ class Settings:
             database_path=Path(os.getenv("MEETING_AGENT_DB", "data/meeting_agent.db")),
             cors_origins=origins,
             app_base_url=os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/"),
+            web_base_url=os.getenv('WEB_BASE_URL','http://localhost:3000').rstrip('/'),
             oauth_encryption_key=os.getenv("OAUTH_ENCRYPTION_KEY") or None,
             google_client_id=os.getenv("GOOGLE_CLIENT_ID") or None,
             google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET") or None,

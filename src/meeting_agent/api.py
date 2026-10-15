@@ -25,6 +25,8 @@ from .budget_api import budget_router
 from .escalations import EscalationService
 from .discord_client import DiscordTransport
 from .discord_api import discord_router
+from .discord_worker import DiscordWorker
+from .discord_attendance import DiscordAttendance
 from .minutes import MinutesService
 from .knowledge import KnowledgeService
 from .knowledge_api import knowledge_router
@@ -101,12 +103,27 @@ def create_app(
     minutes_service=MinutesService(repository,brain,escalations)
     minutes_service.transcript=lambda sid: recall.final_transcript(sid) or repository.get_transcript(sid)
     meeting.minutes=minutes_service
+    discord_worker=DiscordWorker(settings)
+    attendance=DiscordAttendance(settings,repository,briefings,discord_worker,playback,budget)
+
+    async def discord_voice_lifecycle():
+        await attendance.recover()
+        if any(not getattr(settings,key) for key in ('discord_bot_token','discord_guild_id','discord_owner_user_id','discord_escalation_channel_id','openai_api_key','elevenlabs_api_key')):
+            return
+        try:
+            await discord_worker.start()
+            await discord_worker.run(attendance.handle_event)
+        except Exception:
+            discord.gateway_state='voice_worker_failed; check dependencies and configuration'
+        finally:
+            await discord_worker.close()
+            await attendance.recover()
 
     @asynccontextmanager
     async def lifespan(app):
         worker = asyncio.create_task(recall.worker())
         escalation_worker = asyncio.create_task(escalations.worker())
-        gateway = asyncio.create_task(discord.gateway(escalations))
+        gateway = asyncio.create_task(discord_voice_lifecycle() if settings.discord_voice_enabled else discord.gateway(escalations))
         minutes_worker = asyncio.create_task(minutes_service.worker())
         try:
             yield
@@ -145,8 +162,10 @@ def create_app(
     app.state.playback = playback
     app.state.escalations = escalations
     app.state.discord = discord
+    app.state.discord_attendance = attendance
+    app.state.discord_worker = discord_worker
     app.state.minutes = minutes_service
-    app.include_router(discord_router(discord))
+    app.include_router(discord_router(discord,attendance))
     app.include_router(knowledge_router(knowledge))
 
     @app.middleware("http")
