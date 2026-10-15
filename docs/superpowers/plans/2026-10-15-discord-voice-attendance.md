@@ -315,7 +315,7 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
 
 **Interfaces:** No new runtime contract. Setup describes the exact model IDs, guild registration, minimal permissions/intents, Node/FFmpeg, enable flag, briefing syntax, budget scope and remaining live-call checks.
 
-- [ ] **Step 1: Write failing setup-contract tests.** Missing keys never log in/register/join/call providers. Run the CLI with incomplete configuration, fake subprocess/REST transports and sentinel secrets; assert safe failure before external I/O. Review documentation/configuration agreement manually rather than adding source-string mirror tests.
+- [x] **Step 1: Write failing setup-contract tests.** Missing keys never log in/register/join/call providers. Run the CLI with incomplete configuration, fake subprocess/REST transports and sentinel secrets; assert safe failure before external I/O. Review documentation/configuration agreement manually rather than adding source-string mirror tests.
   Name the primary case test_registration_requires_config_without_network; assert:
 
         assert result.returncode != 0
@@ -323,12 +323,12 @@ Use uv sync --locked and npm ci for reproducible installs. Update lockfiles inte
         assert gateway_login_calls == []
         assert "secret-token-value" not in result.stderr
 
-- [ ] **Step 2: Run test_discord_setup_contract.py; confirm the new safe-CLI behavior fails for the intended reason.**
-- [ ] **Step 3: Finish setup/operational docs.** Include locked installs, View Channel/Connect/Speak plus existing escalation/thread/history permissions, Message Content setup, FFmpeg prerequisite, no automatic rejoin, uncertain charges and pending-budget notes. List credentials to configure locally later without asking for secrets in chat.
+- [x] **Step 2: Run test_discord_setup_contract.py; confirm the new safe-CLI behavior fails for the intended reason.**
+- [x] **Step 3: Finish setup/operational docs.** Include locked installs, View Channel/Connect/Speak plus existing escalation/thread/history permissions, Message Content setup, FFmpeg prerequisite, no automatic rejoin, uncertain charges and pending-budget notes. List credentials to configure locally later without asking for secrets in chat.
   Mark real provider compatibility, live DAVE receive and transcription accuracy unverified until a separately authorized private test. Preserve earlier foundation review limitations.
-- [ ] **Step 4: Run fresh full verification, checking each exit code.** Backend: uv sync --locked then full pytest suite. Worker: npm ci then npm test. Web: npm ci, npm test, npm run typecheck, npm run build. Run git diff --check; reject unrelated/generated/secret artifacts. Record exact results and real-call limits.
-- [ ] **Step 5: Request one independent whole-branch review under Native execution using superpowers:requesting-code-review.** Supply approved spec/plan, base 9943ca3c78db53dafdcd7d1b68f9fa8985df8c0e and exact implemented head; use the most capable available reviewer as that workflow requires. Do not delegate implementation tasks. Focus on authorization, correctness, concurrency, cost bypass/uncertain charges, DAVE receive, recovery/cleanup and regressions. Validate feedback through receiving-code-review, fix reproduced issues and rerun affected checks. If independent review is unavailable, report incomplete review explicitly.
-- [ ] **Step 6: Commit documentation/validated fixes and present concrete diff/results.** Use finishing-a-development-branch for integration; attach any created PR. Offline success does not authorize deployment, live command registration or a real meeting.
+- [x] **Step 4: Run fresh full verification, checking each exit code.** Backend: uv sync --locked then full pytest suite. Worker: npm ci then npm test. Web: npm ci, npm test, npm run typecheck, npm run build. Run git diff --check; reject unrelated/generated/secret artifacts. Record exact results and real-call limits.
+- [x] **Step 5: Request one independent whole-branch review under Native execution using superpowers:requesting-code-review.** Supply approved spec/plan, base 9943ca3c78db53dafdcd7d1b68f9fa8985df8c0e and exact implemented head; use the most capable available reviewer as that workflow requires. Do not delegate implementation tasks. Focus on authorization, correctness, concurrency, cost bypass/uncertain charges, DAVE receive, recovery/cleanup and regressions. Validate feedback through receiving-code-review, fix reproduced issues and rerun affected checks. If independent review is unavailable, report incomplete review explicitly.
+- [x] **Step 6: Commit documentation/validated fixes and present concrete diff/results.** Use finishing-a-development-branch for integration; attach any created PR. Offline success does not authorize deployment, live command registration or a real meeting.
 
 ## Dependency Order and Self-Review
 

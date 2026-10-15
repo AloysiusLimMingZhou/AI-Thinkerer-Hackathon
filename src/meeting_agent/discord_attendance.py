@@ -54,7 +54,7 @@ class DiscordAttendance:
         except WorkerUnavailable:return row
         if status.get('session_id')==row['session_id'] and status.get('generation')==row['generation']:
             if row['state']=='joining' and all(status.get(k) for k in ('connection','decoder','receiver','player')):
-                self.store.transition(row['session_id'],'active',health={k:bool(status.get(k)) for k in ('gateway','connection','decoder','receiver','player')})
+                await self._activate(row['session_id'],status)
             return self.store.attendance(row['session_id'])
         if status.get('session_id'):return row
         self.store.transition(row['session_id'],'failed',error='Connection was not established')
@@ -107,17 +107,20 @@ class DiscordAttendance:
         if not all(health.get(k) for k in ('connection','decoder','receiver','player')):
             await self.leave(session.id,reason='startup_failed')
             return {'ok':False,'code':'receive_not_ready','session_id':session.id}
-        self.store.transition(session.id,'active',health={k:bool(health.get(k)) for k in ('gateway','connection','decoder','receiver','player')})
+        return await self._activate(session.id,health)
+
+    async def _activate(self,sid,health):
+        self.store.transition(sid,'active',health={k:bool(health.get(k)) for k in ('gateway','connection','decoder','receiver','player')})
         if self.on_started:
-            try:await self.on_started(session.id)
+            try:await self.on_started(sid)
             except BudgetExceeded:
-                await self.leave(session.id,reason='budget')
-                return {'ok':False,'code':'monthly_budget_exhausted','session_id':session.id}
+                await self.leave(sid,reason='budget')
+                return {'ok':False,'code':'monthly_budget_exhausted','session_id':sid}
             except Exception:
-                self.store.execute("UPDATE discord_attendance SET introduction='failed' WHERE session_id=?",(session.id,))
-                await self.leave(session.id,reason='startup_failed')
-                return {'ok':False,'code':'introduction_failed','session_id':session.id}
-        return {'ok':True,'code':'joined','session_id':session.id,'dashboard_url':self.settings.web_base_url+'/meetings/'+session.id}
+                self.store.execute("UPDATE discord_attendance SET introduction='failed' WHERE session_id=?",(sid,))
+                await self.leave(sid,reason='startup_failed')
+                return {'ok':False,'code':'introduction_failed','session_id':sid}
+        return {'ok':True,'code':'joined','session_id':sid,'dashboard_url':self.settings.web_base_url+'/meetings/'+sid}
 
     async def control(self,sid,action):
         row=self.store.attendance(sid)
@@ -139,12 +142,18 @@ class DiscordAttendance:
         if self.audio:await self.audio.cancel(session_id)
         try:
             await self.playback.stop(session_id)
+        except Exception:
+            self.repository.record_event(session_id,'discord.stop_uncertain',{})
+        # Leaving must not depend on an independent speech-stop acknowledgement.
+        try:
             await self.worker.request(command('leave',session_id=session_id,generation=row['generation']))
         except WorkerUnavailable:
-            self.store.execute('UPDATE discord_attendance SET error=? WHERE session_id=?',('Leave outcome uncertain; reconcile worker status',session_id))
-            return {'ok':False,'code':'leave_uncertain','session_id':session_id}
+            try:await self.worker.close()
+            except Exception:
+                self.store.execute('UPDATE discord_attendance SET error=? WHERE session_id=?',('Worker shutdown needs attention; departure is unconfirmed',session_id))
+                return {'ok':False,'code':'leave_uncertain','session_id':session_id}
         state='budget_stopped' if reason=='budget' else 'failed' if reason=='startup_failed' else 'ended'
-        self.store.transition(session_id,state,error=None if reason=='owner' else reason)
+        self.store.transition(session_id,state,error=None if reason=='owner' else reason,health={k:False for k in ('gateway','connection','decoder','receiver','player')})
         self.worker.generations.pop(session_id,None)
         if self.on_left:await self.on_left(session_id)
         return {'ok':True,'session_id':session_id,'state':state}

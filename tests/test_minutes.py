@@ -121,3 +121,23 @@ def test_multiple_final_artifacts_are_chronological_and_deduplicate(tmp_path):
     for tid,stamp,text in [('later','2026-10-15T10:00:01Z','Later item'),('earlier','2026-10-15T10:00:00Z','Early decision'),('duplicate','2026-10-15T10:00:00Z','Early decision')]:
         recall.store.execute('INSERT INTO recall_transcripts VALUES(?,?,?,?,?)',(tid,sid,None,stamp,artifact(stamp,text)))
     assert [t.text for t in recall.final_transcript(sid)]==['Early decision','Later item']
+
+
+@pytest.mark.asyncio
+async def test_budget_appendix_refresh_preserves_successful_sections(tmp_path):
+    from meeting_agent.budget import BudgetExceeded
+    h=minutes_harness(tmp_path)
+    async def summarize(session,material,*,synthesis):
+        if synthesis:raise BudgetExceeded(None)
+        return 'Successfully generated section.'
+    h.summarizer.summarize_minutes=summarize
+    with pytest.raises(BudgetExceeded):await h.minutes.finalize(h.sid,[entry(0,'a'*25000),entry(1,'b'*25000)])
+    assert 'Successfully generated section.' in h.repo.get_minutes(h.sid).content
+    question=h.escalations.open_question(h.sid,h.utterance('What is the budget?'),'prompt','utterance')
+    h.escalations.store.execute("INSERT INTO owner_replies VALUES('late',?,'The budget is 500.','2026-10-15','saved_after_end',NULL)",(question['id'],))
+    h.minutes.schedule(h.sid)
+    content=h.repo.get_minutes(h.sid).content
+    assert 'Successfully generated section.' in content
+    assert 'The budget is 500.' in content
+    assert h.minutes.status(h.sid)['state']=='pending_budget'
+    assert not await h.minutes.run_once()

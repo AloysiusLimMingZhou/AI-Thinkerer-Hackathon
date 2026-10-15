@@ -81,3 +81,24 @@ async def test_event_handler_can_request_rpc_without_blocking_reader():
         await worker.request(command('status',request_id='trigger'))
         await asyncio.wait_for(done.wait(),.5)
     finally:await worker.close();await runner
+
+
+@pytest.mark.asyncio
+async def test_concurrent_lifecycle_close_does_not_cancel_its_initiating_handler():
+    async def factory(*args,**kw):
+        return await asyncio.create_subprocess_exec(sys.executable,str(Path(__file__).parent/'fixtures/discord_worker_stub.py'),**kw)
+    worker=DiscordWorker(Settings(discord_bot_token='fake'),process_factory=factory)
+    finished=asyncio.Event()
+    async def handler(e):
+        await worker.close()
+        finished.set()
+    async def lifecycle():
+        await worker.run(handler)
+        await worker.close()
+    await worker.start();runner=asyncio.create_task(lifecycle())
+    try:
+        await worker.request(command('status',request_id='trigger'))
+        await asyncio.wait_for(runner,3)
+        assert finished.is_set()
+        assert worker.process.returncode is not None
+    finally:await worker.close()

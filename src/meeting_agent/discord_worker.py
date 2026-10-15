@@ -18,11 +18,13 @@ class DiscordWorker:
         self._tasks=[]
         self._event_tasks=set()
         self._closing=False
+        self._close_future=None
         self._write_lock=asyncio.Lock()
 
     async def start(self):
         if self.process and self.process.returncode is None: return
         self._closing=False
+        self._close_future=None
         allowed={'PATH','PATHEXT','SYSTEMROOT','WINDIR','TEMP','TMP','COMSPEC','USERPROFILE','APPDATA','LOCALAPPDATA','PROGRAMFILES','PROGRAMFILES(X86)'}
         env={k:v for k,v in os.environ.items() if k.upper() in allowed}
         env['DISCORD_BOT_TOKEN']=self.settings.discord_bot_token or ''
@@ -109,16 +111,26 @@ class DiscordWorker:
         return self._health
 
     async def close(self):
+        # The lifecycle may close again after EOF while a command handler is
+        # still reaping this child. Share completion instead of cancelling it.
+        if self._close_future is not None:
+            await asyncio.shield(self._close_future)
+            return
+        complete=asyncio.get_running_loop().create_future()
+        self._close_future=complete
         self._closing=True
         current=asyncio.current_task()
-        for task in [*self._tasks,*self._event_tasks]:
-            if task is not current: task.cancel()
-        if self.process:
-            if self.process.stdin: self.process.stdin.close()
-            try: await asyncio.wait_for(self.process.wait(),2)
-            except TimeoutError:
-                self.process.terminate()
-                try: await asyncio.wait_for(self.process.wait(),2)
-                except TimeoutError: self.process.kill(); await self.process.wait()
-        await asyncio.gather(*(t for t in [*self._tasks,*self._event_tasks] if t is not current),return_exceptions=True)
-        self._health=WorkerHealth()
+        try:
+            for task in [*self._tasks,*self._event_tasks]:
+                if task is not current:task.cancel()
+            if self.process:
+                if self.process.stdin:self.process.stdin.close()
+                try:await asyncio.wait_for(self.process.wait(),2)
+                except TimeoutError:
+                    self.process.terminate()
+                    try:await asyncio.wait_for(self.process.wait(),2)
+                    except TimeoutError:self.process.kill();await self.process.wait()
+            await asyncio.gather(*(t for t in [*self._tasks,*self._event_tasks] if t is not current),return_exceptions=True)
+            self._health=WorkerHealth()
+        finally:
+            if not complete.done():complete.set_result(None)

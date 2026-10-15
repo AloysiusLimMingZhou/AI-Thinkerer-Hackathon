@@ -211,3 +211,26 @@ async def test_stt_concurrency_queue_bound_and_speaker_order(tmp_path):
     assert order.index('a1')<order.index('queued0')<order.index('queued1')
     assert len([e for e in h.repo.get_events(h.sid) if e['type']=='discord.audio_gap'])==2
     await h.audio.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('leave_fails',[False,True])
+async def test_budget_stop_attempts_leave_and_reaps_uncertain_worker(tmp_path,leave_fails):
+    from meeting_agent.discord_worker import WorkerUnavailable
+    h=await flow(tmp_path);original=h.worker.request;attempts=[];closed=[]
+    async def request(c,**kw):
+        attempts.append(c.type)
+        if c.type=='stop' or (c.type=='leave' and leave_fails):raise WorkerUnavailable('worker_timeout_uncertain')
+        return await original(c,**kw)
+    async def close():closed.append(True);h.worker.active={}
+    h.worker.request=request;h.worker.close=close
+    count=len(h.voice.calls)
+    result=await h.ctl.leave(h.sid,reason='budget')
+    assert 'leave' in attempts
+    assert result['state']=='budget_stopped'
+    assert bool(closed)==leave_fails
+    assert not h.worker.active
+    assert h.sid not in h.worker.generations
+    assert h.minutes.status(h.sid)['state']=='pending_budget'
+    assert len(h.voice.calls)==count
+    await h.audio.close()

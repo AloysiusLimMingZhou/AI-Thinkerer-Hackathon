@@ -100,3 +100,18 @@ def test_private_attendance_routes_and_no_key_startup(tmp_path,monkeypatch):
         sid=repo.create_session(SessionCreate(title='D',owner_name='Owner',platform='discord')).id
         assert client.get(f'/sessions/{sid}/discord-attendance',headers=headers).status_code==200
         assert client.post(f'/sessions/{sid}/discord-attendance/mute',headers=headers).status_code==404
+
+
+@pytest.mark.asyncio
+async def test_reconciled_join_uses_the_same_introduction_once(tmp_path):
+    h=harness(tmp_path);introduced=[]
+    async def intro(sid):introduced.append(sid)
+    h.ctl.on_started=intro;h.worker.uncertain=True
+    first=await h.ctl.handle_command(request())
+    assert first['code']=='join_uncertain'
+    recovered=await h.ctl.handle_command(request('retry'))
+    assert recovered['ok']
+    assert introduced==[first['session_id']]
+    await h.ctl.handle_command(request('same'))
+    assert introduced==[first['session_id']]
+    assert len(h.worker.join_calls)==1

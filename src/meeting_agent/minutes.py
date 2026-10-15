@@ -160,8 +160,11 @@ class MinutesService:
             self.store.execute("UPDATE minutes_attempts SET state='uncertain' WHERE id=?",(attempt,));raise
 
     def pending_budget(self,sid,*,fingerprint=None):
+        previous=self.status(sid)
+        if fingerprint is None and previous['state']=='pending_budget':
+            fingerprint=previous.get('fingerprint')
         now=datetime.now(UTC).isoformat()
-        self.store.execute("INSERT INTO finalizations(session_id,state,error,updated_at) VALUES(?,'pending_budget','Monthly AI budget cannot cover notes. Generate notes manually after reset or a configuration change.',?) ON CONFLICT(session_id) DO UPDATE SET state='pending_budget',error=excluded.error,updated_at=excluded.updated_at,pending=0,waiting_until=NULL",(sid,now))
+        self.store.execute("INSERT INTO finalizations(session_id,state,error,updated_at,fingerprint) VALUES(?,'pending_budget','Monthly AI budget cannot cover notes. Generate notes manually after reset or a configuration change.',?,?) ON CONFLICT(session_id) DO UPDATE SET state='pending_budget',error=excluded.error,updated_at=excluded.updated_at,fingerprint=excluded.fingerprint,pending=0,waiting_until=NULL",(sid,now,fingerprint))
         if fingerprint:
             partial=self.store.all('SELECT result FROM minutes_stages WHERE session_id=? AND fingerprint=? ORDER BY stage_key',(sid,fingerprint))
         else:partial=[]
