@@ -13,8 +13,9 @@ class Settings:
 
     openai_api_key: str | None = None
     elevenlabs_api_key: str | None = None
-    openai_model: str = "gpt-5-mini"
-    openai_answer_model: str = "gpt-4.1-mini"
+    openai_model: str = "gpt-6-luna"
+    openai_transcription_model: str = "gpt-transcribe"
+    openai_answer_model: str = "gpt-6-luna"
     elevenlabs_voice_id: str = "IKne3meq5aSn9XLyUdCD"
     elevenlabs_model_id: str = "eleven_flash_v2_5"
     database_path: Path = Path("data/meeting_agent.db")
@@ -81,8 +82,9 @@ class Settings:
             or None,
             openai_api_key=os.getenv("OPENAI_API_KEY") or None,
             elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY") or None,
-            openai_model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
-            openai_answer_model=os.getenv("OPENAI_ANSWER_MODEL", "gpt-4.1-mini"),
+            openai_model=os.getenv("OPENAI_MODEL", "gpt-6-luna"),
+            openai_transcription_model=os.getenv("OPENAI_TRANSCRIPTION_MODEL", "gpt-transcribe"),
+            openai_answer_model=os.getenv("OPENAI_ANSWER_MODEL", "gpt-6-luna"),
             elevenlabs_voice_id=os.getenv(
                 "ELEVENLABS_VOICE_ID", "IKne3meq5aSn9XLyUdCD"
             ),

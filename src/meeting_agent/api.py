@@ -81,7 +81,7 @@ def create_app(
     settings = settings or Settings.from_env()
     repository = repository or SQLiteRepository(settings.database_path)
     budget = BudgetService(repository, settings)
-    brain = brain or OpenAIBrain(settings)
+    brain = brain or OpenAIBrain(settings, budget)
     voice = voice or ElevenLabsVoice(settings)
     oauth = OAuthManager(settings, repository, provider_requester)
     context_importer = ContextImporter(oauth)

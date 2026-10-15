@@ -118,9 +118,9 @@ def test_answer_model_prompt_and_dialogue_contract():
         )
     ]
     asyncio.run(brain.answer(meeting(), "What about the budget?", history, []))
-    assert captured["model"] == "gpt-4.1-mini"
-    assert "reasoning" not in captured
-    assert captured["max_output_tokens"] == 300
+    assert captured["model"] == "gpt-6-luna"
+    assert captured["reasoning"] == {"effort": "none"}
+    assert captured["max_output_tokens"] == 1000
     assert captured["store"] is False
     assert "NO action tools" in captured["instructions"]
     assert "distinct identities" in captured["instructions"]
@@ -138,7 +138,7 @@ def test_minutes_keep_original_model():
 
     brain._complete = complete
     asyncio.run(brain.summarize_minutes(meeting(), '', synthesis=True))
-    assert captured["model"] == "gpt-5-mini"
+    assert captured["model"] == "gpt-6-luna"
     assert captured["reasoning"] == {"effort": "low"}
 
 

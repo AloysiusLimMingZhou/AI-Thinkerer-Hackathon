@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from .meeting_models import BrainAnswer, UNKNOWN_ANSWER
 from .models import AgentDecision, Citation, UtteranceCreate
 from .services import conversation_gate
+from .budget import PaidCallContext, paid_call_context
 
 
 def social_request(text,name):
@@ -50,7 +51,8 @@ class MeetingService:
 
     async def ingest(self,sid,utterance,*,preview=False):
         async with self.locks.setdefault(sid,asyncio.Lock()):
-            return await self._ingest(sid,utterance,preview)
+            with paid_call_context(PaidCallContext(sid, f'ingest:{utterance.platform}:{utterance.event_id}', 'ingest')):
+                return await self._ingest(sid,utterance,preview)
 
     async def _ingest(self,sid,u,preview):
         key=hashlib.sha256(f'{sid}:{u.platform}:{u.event_id}'.encode()).hexdigest()
