@@ -131,7 +131,7 @@ class EscalationService:
             self.store.execute('UPDATE escalation_outbox SET state=?,next_at=?,error=? WHERE id=?',
                 ('queued' if retry else 'needs_attention',self.clock()+(getattr(error,'retry_after',None) or 0),message,job['id']))
             if not retry:
-                self.store.execute("UPDATE unanswered_questions SET state='delivery_failed',error=? WHERE id=?",(message,question['id']))
+                self.store.execute("UPDATE unanswered_questions SET state=CASE WHEN state='answered' THEN state ELSE 'delivery_failed' END,error=? WHERE id=?",(message,question['id']))
         else:
             with self.repository._connect() as db:
                 db.execute("UPDATE unanswered_questions SET state=CASE WHEN state='answered' THEN state ELSE 'awaiting_owner' END,parent_message_id=?,thread_id=?,error=NULL WHERE id=?",(ref.parent_message_id,ref.thread_id,question['id']))
@@ -198,6 +198,7 @@ class EscalationService:
             state='needs_attention' if live else 'saved_after_end'
             self.store.execute('UPDATE owner_replies SET state=?,error=? WHERE id=?',(state,'Playback did not complete; do not replay without checking',message_id))
             if not live:
+                if getattr(self.meeting,'minutes',None): self.meeting.minutes.schedule(sid)
                 await self._ack(question,'Saved in the meeting notes; not spoken because the meeting has ended.',message_id+':ended')
             return state
         self.store.execute("UPDATE owner_replies SET state='queued' WHERE id=?",(message_id,))
@@ -205,17 +206,41 @@ class EscalationService:
         return 'queued'
 
     async def drain_replies(self):
-        replies=self.store.all("SELECT r.id,r.question_id,q.session_id FROM owner_replies r JOIN unanswered_questions q ON q.id=r.question_id WHERE r.state='pending' ORDER BY r.created_at LIMIT 4")
+        replies=self.store.all("SELECT r.id,r.question_id,q.session_id FROM owner_replies r JOIN unanswered_questions q ON q.id=r.question_id WHERE r.state='pending' ORDER BY r.created_at")
+        attempted={}
         for reply in replies:
+            sid=reply['session_id']
+            lock=self.meeting.locks.setdefault(sid,asyncio.Lock())
+            if lock.locked() or attempted.get(sid,0)>=4: continue
+            attempted[sid]=attempted.get(sid,0)+1
             question=self.store.one('SELECT * FROM unanswered_questions WHERE id=?',(reply['question_id'],))
-            async with self.meeting.locks.setdefault(question['session_id'],asyncio.Lock()):
+            async with lock:
                 await self._relay(reply['id'],question)
+
+    def owner_playback_failed(self,sid,message_id):
+        message='Owner reply playback failed or was interrupted; check before replaying'
+        self.store.execute("UPDATE owner_replies SET state='needs_attention',error=? WHERE id=? AND question_id IN (SELECT id FROM unanswered_questions WHERE session_id=?)",(message,message_id,sid))
+        self.store.execute('UPDATE unanswered_questions SET error=? WHERE session_id=? AND id IN (SELECT question_id FROM owner_replies WHERE id=?)',(message,sid,message_id))
+        self.repository.record_event(sid,'owner.relay_failed',{'id':message_id})
 
     def recover(self):
         self.store.execute("UPDATE escalation_outbox SET state='needs_attention',error='Interrupted send; reconcile before retrying' WHERE state='processing'")
         self.store.execute("UPDATE unanswered_questions SET state='delivery_failed',error='Interrupted send; reconcile before retrying' WHERE state='escalation_queued' AND id IN (SELECT question_id FROM escalation_outbox WHERE state='needs_attention')")
-        self.store.execute("UPDATE owner_replies SET state='needs_attention',error='Interrupted playback; check meeting before replay' WHERE state='processing'")
+        for reply in self.store.all("SELECT r.id,q.session_id FROM owner_replies r JOIN unanswered_questions q ON q.id=r.question_id WHERE r.state='processing'"):
+            self.owner_playback_failed(reply['session_id'],reply['id'])
         self.store.execute("UPDATE speech_intents SET state='needs_attention' WHERE state='processing'")
+        recall=getattr(self.meeting.playback,'recall',None)
+        if recall:
+            def uncertain(key):
+                audio=recall.store.one('SELECT state,expires FROM recall_audio WHERE id=?',(key,))
+                return not audio or audio['state'] in {'failed','expired','cancelled','playing'} or (audio['state']!='played' and audio['expires']<self.clock())
+            for reply in self.store.all("SELECT r.id,q.session_id FROM owner_replies r JOIN unanswered_questions q ON q.id=r.question_id WHERE r.state='queued'"):
+                key='discord:'+reply['id']
+                if uncertain(key):
+                    self.owner_playback_failed(reply['session_id'],reply['id'])
+                    self.store.execute("UPDATE speech_intents SET state='needs_attention' WHERE id=?",(key,))
+            for question in self.store.all("SELECT session_id,prompt_key FROM unanswered_questions WHERE state='awaiting_urgency'"):
+                if uncertain(question['prompt_key']): self.cancel_prompt(question['session_id'],question['prompt_key'])
 
     async def worker(self):
         self.recover()

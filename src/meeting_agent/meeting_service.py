@@ -151,6 +151,4 @@ class MeetingService:
             self.escalations.cancel_prompt(sid,key)
             if key.startswith('discord:'):
                 message_id=key.removeprefix('discord:')
-                self.escalations.store.execute("UPDATE owner_replies SET state='needs_attention',error='Owner reply playback failed; check before replaying' WHERE id=?",(message_id,))
-                self.escalations.store.execute("UPDATE unanswered_questions SET error='Owner reply playback failed; check before replaying' WHERE session_id=? AND id IN (SELECT question_id FROM owner_replies WHERE id=?)",(sid,message_id))
-                self.repository.record_event(sid,'owner.relay_failed',{'id':message_id})
+                self.escalations.owner_playback_failed(sid,message_id)

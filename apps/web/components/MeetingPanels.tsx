@@ -204,7 +204,7 @@ export function BriefingPanel({ notes, agent, add }: { notes: ContextNote[]; age
   return (
     <div className={styles.briefing}>
       <p className={styles.lede}>
-        {agent} answers only from these notes and what’s said in the meeting. If it can’t find something here, it says it doesn’t know.
+        {agent} uses this meeting’s supplied knowledge for factual answers. If it can’t find support here, it says it doesn’t know and asks whether the question is urgent.
       </p>
       {notes.length === 0 ? (
         <p className={styles.none}>No notes yet. Add what people are likely to ask about.</p>

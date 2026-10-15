@@ -73,7 +73,7 @@ npm run typecheck
 npm run build
 ```
 
-The current automated checks pass: 144 backend tests, two frontend behavior tests, TypeScript and the production build, on Python 3.13.13 and Node 24.18.0/npm 11.8.0. Tests use fake providers, real SQLite and real local document extraction. Browser checks cover upload rejection/retry and notes updating after call end. See [current assessment](docs/PROJECT_ASSESSMENT.md) for the original incomplete specs.
+The automated checks cover the backend, two frontend behavior tests, TypeScript and the production build, on Python 3.13.13 and Node 24.18.0/npm 11.8.0. Tests use fake providers, real SQLite and real local document extraction. Browser checks cover upload rejection/retry and notes updating after call end. See [current assessment](docs/PROJECT_ASSESSMENT.md) and the [implementation verification](docs/IMPLEMENTATION_VERIFICATION.md) for exact results and review limitations.
 
 Live provider credentials, Discord intent/permissions, public Recall webhooks, Google consent, meeting admission and audible playback still require an operator test. No live provider calls or Discord messages were used to verify this phase. Speech uses complete MP3 clips; full-duplex audio, barge-in and a 2.5-second audible-response target are unverified. Google Drive import, automatic connector token refresh, retention controls and multi-user authentication remain incomplete.
 
