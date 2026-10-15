@@ -31,6 +31,10 @@ class Settings:
     public_api_base_url: str | None = None
     recall_media_base_url: str | None = None
     recall_calendar_callback_uri: str | None = None
+    discord_voice_enabled: bool = False
+    discord_node_executable: str = 'node'
+    discord_ffmpeg_executable: str = 'ffmpeg'
+    discord_max_attendance_seconds: int = 14400
     discord_bot_token: str | None = None
     discord_guild_id: str | None = None
     discord_escalation_channel_id: str | None = None
@@ -40,6 +44,8 @@ class Settings:
     ai_budget_timezone: str = "Asia/Kuala_Lumpur"
 
     def __post_init__(self):
+        if not 60 <= self.discord_max_attendance_seconds <= 14400:
+            raise ValueError('Discord maximum attendance must be 60..14400 seconds')
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
         from .cost_rates import dollars_to_micro
         try:
@@ -63,6 +69,10 @@ class Settings:
             ai_monthly_soft_limit_usd=os.getenv('AI_MONTHLY_SOFT_LIMIT_USD','5'),
             ai_monthly_hard_limit_usd=os.getenv('AI_MONTHLY_HARD_LIMIT_USD','8'),
             ai_budget_timezone=os.getenv('AI_BUDGET_TIMEZONE','Asia/Kuala_Lumpur'),
+            discord_voice_enabled=os.getenv('DISCORD_VOICE_ENABLED','false').lower()=='true',
+            discord_node_executable=os.getenv('DISCORD_NODE_EXECUTABLE','node'),
+            discord_ffmpeg_executable=os.getenv('DISCORD_FFMPEG_EXECUTABLE','ffmpeg'),
+            discord_max_attendance_seconds=int(os.getenv('DISCORD_MAX_ATTENDANCE_SECONDS','14400')),
             discord_bot_token=os.getenv('DISCORD_BOT_TOKEN') or None,
             discord_guild_id=os.getenv('DISCORD_GUILD_ID') or None,
             discord_escalation_channel_id=os.getenv('DISCORD_ESCALATION_CHANNEL_ID') or None,

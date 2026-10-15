@@ -1,0 +1,14 @@
+{
+  "name": "personal-meeting-discord-voice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "test": "node --test",
+    "start": "node src/worker.mjs",
+    "register": "node src/register.mjs"
+  }
+}
