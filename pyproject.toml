@@ -5,6 +5,7 @@ description = "A context-aware AI delegate for meetings"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "tzdata>=2025.2",
     "discord.py>=2.6,<3",
     "pypdf>=6,<7",
     "python-docx>=1.2,<2",

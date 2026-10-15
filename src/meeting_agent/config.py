@@ -34,6 +34,21 @@ class Settings:
     discord_guild_id: str | None = None
     discord_escalation_channel_id: str | None = None
     discord_owner_user_id: str | None = None
+    ai_monthly_soft_limit_usd: str = "5"
+    ai_monthly_hard_limit_usd: str = "8"
+    ai_budget_timezone: str = "Asia/Kuala_Lumpur"
+
+    def __post_init__(self):
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        from .cost_rates import dollars_to_micro
+        try:
+            soft = dollars_to_micro(self.ai_monthly_soft_limit_usd)
+            hard = dollars_to_micro(self.ai_monthly_hard_limit_usd)
+            ZoneInfo(self.ai_budget_timezone)
+            if hard <= 0 or soft > hard:
+                raise ValueError("Require 0 <= soft limit <= positive hard limit")
+        except (ArithmeticError, ZoneInfoNotFoundError, TypeError) as exc:
+            raise ValueError("Invalid monthly budget settings") from exc
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -44,6 +59,9 @@ class Settings:
             if origin.strip()
         )
         return cls(
+            ai_monthly_soft_limit_usd=os.getenv('AI_MONTHLY_SOFT_LIMIT_USD','5'),
+            ai_monthly_hard_limit_usd=os.getenv('AI_MONTHLY_HARD_LIMIT_USD','8'),
+            ai_budget_timezone=os.getenv('AI_BUDGET_TIMEZONE','Asia/Kuala_Lumpur'),
             discord_bot_token=os.getenv('DISCORD_BOT_TOKEN') or None,
             discord_guild_id=os.getenv('DISCORD_GUILD_ID') or None,
             discord_escalation_channel_id=os.getenv('DISCORD_ESCALATION_CHANNEL_ID') or None,

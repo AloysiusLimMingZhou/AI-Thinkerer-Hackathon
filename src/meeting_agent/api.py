@@ -20,6 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from .config import Settings
+from .budget import BudgetService, BudgetExceeded
+from .budget_api import budget_router
 from .escalations import EscalationService
 from .discord_client import DiscordTransport
 from .discord_api import discord_router
@@ -78,6 +80,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     repository = repository or SQLiteRepository(settings.database_path)
+    budget = BudgetService(repository, settings)
     brain = brain or OpenAIBrain(settings)
     voice = voice or ElevenLabsVoice(settings)
     oauth = OAuthManager(settings, repository, provider_requester)
@@ -124,6 +127,13 @@ def create_app(
         description="Context-aware meeting delegate backend.",
         lifespan=lifespan,
     )
+    app.state.budget = budget
+    app.include_router(budget_router(budget))
+
+    @app.exception_handler(BudgetExceeded)
+    async def budget_error(request, exc):
+        return JSONResponse({'detail': {'code':'monthly_budget_exhausted','message':str(exc),'reset_at':exc.status.reset_at.isoformat(),'available_micro_usd':exc.status.available_micro_usd}},status_code=429)
+
     app.state.recall = recall
     app.state.knowledge = knowledge
     app.state.meeting = meeting
