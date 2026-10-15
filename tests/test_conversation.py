@@ -137,7 +137,7 @@ def test_minutes_keep_original_model():
         return "# Summary"
 
     brain._complete = complete
-    asyncio.run(brain.generate_minutes(meeting(), [], [], []))
+    asyncio.run(brain.summarize_minutes(meeting(), '', synthesis=True))
     assert captured["model"] == "gpt-5-mini"
     assert captured["reasoning"] == {"effort": "low"}
 

@@ -9,7 +9,7 @@ import { SendForm } from "@/components/SendForm";
 import type { BackendEvent, Bot, Health, RecallStatus, Session, TranscriptEntry } from "@/lib/api-types";
 import { backend } from "@/lib/backend";
 import { clock, dayKey, duration, longDay, plural, shortDay, spelled } from "@/lib/format";
-import { answersFrom, botState, DEFAULT_AGENT, inCall, isLive, platformOf, silencesFrom } from "@/lib/meeting";
+import { answersFrom, botState, DEFAULT_AGENT, inCall, shouldRefresh, platformOf, silencesFrom } from "@/lib/meeting";
 import { timeline, type Timeline } from "@/lib/score";
 import styles from "./home.module.css";
 
@@ -24,13 +24,15 @@ interface Row {
   tl: Timeline | null;
   lines: number;
   answers: number;
+  processing: boolean;
 }
 
 async function loadRow(session: Session): Promise<Row> {
-  const [bot, transcript, events] = await Promise.all([
+  const [bot, transcript, events, finalization] = await Promise.all([
     backend.bot(session.id).catch(() => null),
     backend.transcript(session.id).catch((): TranscriptEntry[] => []),
     backend.events(session.id).catch((): BackendEvent[] => []),
+    backend.finalization(session.id),
   ]);
   const answers = answersFrom(events);
   return {
@@ -39,6 +41,7 @@ async function loadRow(session: Session): Promise<Row> {
     tl: timeline(transcript, answers, silencesFrom(events)),
     lines: transcript.filter((t) => t.is_final).length,
     answers: answers.length,
+    processing: shouldRefresh(session, bot, finalization),
   };
 }
 
@@ -64,8 +67,9 @@ export default async function HomePage() {
   }
 
   const rows = await Promise.all(sessions.slice(0, RECENT).map(loadRow));
+  const discord = await backend.discordStatus().catch(() => null);
   const live = rows.find((r) => inCall(r.bot) || r.session.status === "active");
-  const pending = rows.some((r) => isLive(r.session, r.bot));
+  const pending = rows.some((r) => r.processing);
   const agent = live?.session.agent_name ?? sessions[0]?.agent_name ?? DEFAULT_AGENT;
   const attended = rows.filter((r) => r.lines > 0).length;
   const answered = rows.reduce((n, r) => n + r.answers, 0);
@@ -150,7 +154,7 @@ export default async function HomePage() {
             </h2>
             <SendForm ready={status.configured} />
           </section>
-          <Readiness status={status} health={health} />
+          <Readiness status={status} health={health} discord={discord} />
         </aside>
       </div>
     </main>

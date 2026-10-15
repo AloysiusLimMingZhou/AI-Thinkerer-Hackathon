@@ -1,4 +1,4 @@
-import type { Health, RecallStatus } from "@/lib/api-types";
+import type { DiscordStatus, Health, RecallStatus } from "@/lib/api-types";
 import { Icon } from "./Icon";
 import styles from "./Readiness.module.css";
 
@@ -12,7 +12,7 @@ const SETTINGS: { key: string; label: string }[] = [
 ];
 
 /** What GET /recall/status says is configured. Presence isn't proof a live meeting works. */
-export function Readiness({ status, health }: { status: RecallStatus; health: Health | null }) {
+export function Readiness({ status, health, discord }: { status: RecallStatus; health: Health | null; discord: DiscordStatus | null }) {
   const missing = new Set(status.missing);
   return (
     <section className={styles.panel} aria-labelledby="ready-title">
@@ -39,6 +39,12 @@ export function Readiness({ status, health }: { status: RecallStatus; health: He
       <p className={styles.note}>
         Set these in the backend’s <code>.env</code> and restart it. Being set isn’t the same as working: run a private test call before the demo.
         {health && !health.openai_configured && " Without OpenAI, it can’t answer or write minutes."}
+      </p>
+      <h3>Discord urgent questions</h3>
+      <p className={styles.note}>
+        {discord?.configured ? `Owner reply connection: ${discord.gateway}.` : "Discord escalation needs configuration."}
+        {discord && discord.missing.length > 0 && ` Set ${discord.missing.join(", ")}.`}
+        {" Replies from your question threads are spoken in the associated meeting. Discord voice /join is planned for the next phase."}
       </p>
     </section>
   );

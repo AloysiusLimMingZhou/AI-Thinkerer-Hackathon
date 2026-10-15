@@ -4,6 +4,7 @@
   "private": true,
   "description": "Meeting Agent control panel: past meetings, minutes, transcripts and what the agent said.",
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

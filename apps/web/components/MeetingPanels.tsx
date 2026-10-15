@@ -1,6 +1,6 @@
 import Markdown from "react-markdown";
 import type { ActionState } from "@/app/actions";
-import type { ContextNote, Minutes } from "@/lib/api-types";
+import type { ContextNote, Finalization, Minutes, UnansweredQuestion } from "@/lib/api-types";
 import { clock, plural, shortDay } from "@/lib/format";
 import { reasonText, type ActivityItem, type AnswerItem, type SilenceItem, type VoiceOutcome } from "@/lib/meeting";
 import { AddNoteForm, RehearseForm, WriteMinutesButton } from "./Forms";
@@ -13,29 +13,36 @@ type Action = (prev: ActionState, form: FormData) => Promise<ActionState>;
 
 export function MinutesPanel({
   minutes,
+  finalization,
   agent,
   hasTranscript,
   write,
 }: {
   minutes: Minutes | null;
+  finalization: Finalization;
   agent: string;
   hasTranscript: boolean;
   write: (prev: ActionState) => Promise<ActionState>;
 }) {
+  const status = finalization.state === "processing"
+    ? <p role="status">Processing meeting notes. This page will update when they are ready.</p>
+    : finalization.state === "failed" ? <p role="alert">{finalization.error || "Minutes generation failed. Retry below."}</p> : null;
   if (!minutes) {
     return (
       <div className={styles.empty}>
+        {status}
         <h3>No minutes yet</h3>
         <p>
           {agent} writes them automatically once Recall finishes the transcript after the call.
           {hasTranscript ? " You can also write them now from what’s been transcribed so far." : " Nothing has been transcribed yet."}
         </p>
-        {hasTranscript && <WriteMinutesButton action={write} label="Write minutes now" />}
+        {hasTranscript && finalization.state !== "processing" && <WriteMinutesButton action={write} label="Write minutes now" />}
       </div>
     );
   }
   return (
     <div>
+      {status}
       <div className={styles.minutes}>
         <Markdown>{minutes.content}</Markdown>
       </div>
@@ -62,11 +69,13 @@ export function AnswersPanel({
   answers,
   silences,
   playbacks,
+  questions = [],
   agent,
 }: {
   answers: AnswerItem[];
   silences: SilenceItem[];
   playbacks: { sequence: number; at: string; outcome: "played" | "failed" }[];
+  questions?: UnansweredQuestion[];
   agent: string;
 }) {
   // "Nobody said its name" is the norm, so only the closer calls are listed one by one.
@@ -79,6 +88,21 @@ export function AnswersPanel({
         {answers.length > 0 ? `${agent} answered ${plural(answers.length, "question")}.` : `${agent} hasn’t answered anything yet.`} It speaks
         only when someone says “{agent}” and asks it something, and only from its briefing notes and the conversation.
       </p>
+
+      {questions.length > 0 && (
+        <section className={styles.block} aria-labelledby="open-questions">
+          <h3 id="open-questions">Questions needing you</h3>
+          <ul className={styles.plain}>
+            {questions.map((q) => (
+              <li key={q.id}>
+                <strong>{q.speaker}</strong>: {q.question}
+                <p className={styles.why}>{({ awaiting_urgency: "Asked whether this is urgent", not_urgent: "Saved for the notes; no notification", urgency_expired: "No urgency confirmation received", escalation_queued: "Discord notification queued", awaiting_owner: "Waiting for your Discord reply", delivery_failed: "Discord delivery needs attention", answered: "You supplied an answer" } as Record<string, string>)[q.state] ?? q.state}</p>
+                {q.error && <p className={styles.blockNote}>{q.error}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {answers.length > 0 && (
         <ol className={styles.turns}>
@@ -112,6 +136,8 @@ export function AnswersPanel({
                             <Icon name="doc" size={14} />
                             <span>{c.title}</span>
                             <span className={styles.sourceKind}>{c.source}</span>
+                            {c.locator && <span>{c.locator}</span>}
+                            {c.quote && <q>{c.quote}</q>}
                           </li>
                         ))}
                       </ul>
@@ -178,7 +204,7 @@ export function BriefingPanel({ notes, agent, add }: { notes: ContextNote[]; age
   return (
     <div className={styles.briefing}>
       <p className={styles.lede}>
-        {agent} answers only from these notes and what’s said in the meeting. If it can’t find something here, it says it doesn’t know.
+        {agent} uses this meeting’s supplied knowledge for factual answers. If it can’t find support here, it says it doesn’t know and asks whether the question is urgent.
       </p>
       {notes.length === 0 ? (
         <p className={styles.none}>No notes yet. Add what people are likely to ask about.</p>

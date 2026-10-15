@@ -32,13 +32,16 @@ export interface TranscriptEntry {
 }
 
 export interface Citation {
+  filename?: string | null;
+  locator?: string | null;
+  quote?: string | null;
   id: string;
   source: string;
   title: string;
 }
 
 export interface AgentDecision {
-  action: "stay_silent" | "answer";
+  action: "stay_silent" | "answer" | "defer";
   reason: string;
   answer?: string | null;
   citations?: Citation[];
@@ -82,4 +85,26 @@ export interface Health {
   status: "ok";
   openai_configured: boolean;
   elevenlabs_configured: boolean;
+}
+
+export interface DiscordStatus {
+  configured: boolean;
+  missing: string[];
+  gateway: string;
+  voice_attendance_available: boolean;
+}
+
+export interface Finalization {
+  session_id: string;
+  state: "idle" | "processing" | "ready" | "failed";
+  error: string | null;
+}
+
+export interface UnansweredQuestion {
+  id: string;
+  question: string;
+  speaker: string;
+  state: string;
+  error: string | null;
+  thread_id: string | null;
 }

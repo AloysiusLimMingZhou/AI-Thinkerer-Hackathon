@@ -29,6 +29,7 @@ import {
   platformOf,
   reasonText,
   silencesFrom,
+  shouldRefresh,
 } from "@/lib/meeting";
 import { scoreData, timeline } from "@/lib/score";
 import { isView } from "@/lib/views";
@@ -50,13 +51,16 @@ interface Loaded {
   transcript: TranscriptEntry[];
   events: BackendEvent[];
   minutes: Minutes | null;
+  knowledge: Awaited<ReturnType<typeof backend.knowledge>>;
+  questions: Awaited<ReturnType<typeof backend.questions>>;
+  finalization: Awaited<ReturnType<typeof backend.finalization>>;
 }
 
 async function load(id: string): Promise<Loaded | null> {
   const session = await backend.getSession(id);
   if (!session) return null;
-  const [bot, transcript, events, minutes] = await Promise.all([backend.bot(id), backend.transcript(id), backend.events(id), backend.minutes(id)]);
-  return { session, bot, transcript, events, minutes };
+  const [bot, transcript, events, minutes, knowledge, questions, finalization] = await Promise.all([backend.bot(id), backend.transcript(id), backend.events(id), backend.minutes(id), backend.knowledge(id), backend.questions(id), backend.finalization(id)]);
+  return { session, bot, transcript, events, minutes, knowledge, questions, finalization };
 }
 
 export default async function MeetingPage({ params, searchParams }: Params) {
@@ -75,7 +79,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
   const agent = session.agent_name;
   const answers = answersFrom(events);
   const silences = silencesFrom(events);
-  const notes = briefingFrom(events);
+  const notes = data.knowledge.map((item) => ({ ...item, content: item.preview }));
   const lines = mergedTranscript(transcript, answers, agent);
   const tl = timeline(transcript, answers, silences);
   const live = isLive(session, bot);
@@ -121,7 +125,7 @@ export default async function MeetingPage({ params, searchParams }: Params) {
 
   return (
     <main className={styles.page}>
-      {live && <LiveRefresh every={3000} />}
+      {shouldRefresh(session, bot, data.finalization) && <LiveRefresh every={3000} />}
       <nav className={styles.crumbs} aria-label="Meetings">
         <Link href="/" className={styles.back}>
           <Icon name="chevronLeft" size={16} /> All meetings
@@ -179,8 +183,8 @@ export default async function MeetingPage({ params, searchParams }: Params) {
             }}
             score={tl ? <MeetingScore key="score" data={scoreData(tl, agent)} /> : null}
             panels={{
-              summary: <MinutesPanel key="summary" minutes={minutes} agent={agent} hasTranscript={transcript.length > 0} write={writeMinutes.bind(null, session.id)} />,
-              said: <AnswersPanel key="said" answers={answers} silences={silences} playbacks={manualPlaybacks(events)} agent={agent} />,
+              summary: <MinutesPanel key="summary" minutes={minutes} finalization={data.finalization} agent={agent} hasTranscript={transcript.length > 0} write={writeMinutes.bind(null, session.id)} />,
+              said: <AnswersPanel key="said" answers={answers} silences={silences} playbacks={manualPlaybacks(events)} questions={data.questions} agent={agent} />,
               transcript: (
                 <TranscriptPanel
                   key="transcript"

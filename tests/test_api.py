@@ -5,6 +5,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from meeting_agent.api import create_app
+from meeting_agent.meeting_models import BrainAnswer, AnswerEvidence
 from meeting_agent.config import Settings
 from meeting_agent.models import ContextNoteView, SessionView, TranscriptEntry
 
@@ -21,15 +22,10 @@ class FakeBrain:
         context: list[ContextNoteView],
     ) -> str:
         self.context_seen = list(context)
-        return "The refunds migration is scheduled for Tuesday."
+        return BrainAnswer(kind="supported", text="The refunds migration is scheduled for Tuesday.",
+            evidence=[AnswerEvidence(chunk_id=context[0].id,quote=context[0].text)] if context else [])
 
-    async def generate_minutes(
-        self,
-        session: SessionView,
-        transcript: list[TranscriptEntry],
-        context: list[ContextNoteView],
-        qa_log: list[dict[str, object]],
-    ) -> str:
+    async def summarize_minutes(self,session,material,*,synthesis):
         return "# Summary\n\nThe team reviewed the refunds migration."
 
 
@@ -39,54 +35,19 @@ class FakeVoice:
 
 
 class FakeProviderRequester:
-    def __init__(self) -> None:
-        self.last_headers: dict[str, str] = {}
+    def __init__(self):
+        self.last_headers = {}
 
-    async def post(
-        self,
-        url: str,
-        *,
-        data: dict[str, object] | None = None,
-        headers: dict[str, str] | None = None,
-        auth: tuple[str, str] | None = None,
-    ) -> httpx.Response:
-        assert url == "https://slack.com/api/oauth.v2.access"
-        assert auth == ("slack-client", "slack-secret")
-        assert data and data["code"] == "temporary-code"
-        return httpx.Response(
-            200,
-            json={
-                "ok": True,
-                "scope": "",
-                "team": {"id": "T123", "name": "Hackathon"},
-                "authed_user": {
-                    "id": "U123",
-                    "scope": "channels:read,channels:history",
-                    "access_token": "xoxp-private-user-token",
-                },
-            },
-        )
+    async def post(self, url, *, data=None, headers=None, auth=None):
+        assert url == "https://oauth2.googleapis.com/token"
+        assert data["client_id"] == "google-client"
+        assert data["client_secret"] == "google-secret"
+        return httpx.Response(200, json={"access_token":"google-private-token", "scope":"calendar.readonly"})
 
-    async def get(
-        self,
-        url: str,
-        *,
-        headers: dict[str, str] | None = None,
-        params: dict[str, object] | None = None,
-    ) -> httpx.Response:
-        assert url == "https://slack.com/api/conversations.history"
-        assert params == {"channel": "C123", "limit": 15}
-        self.last_headers = headers or {}
-        return httpx.Response(
-            200,
-            json={
-                "ok": True,
-                "messages": [
-                    {"ts": "2", "user": "U2", "text": "Ship on Tuesday"},
-                    {"ts": "1", "user": "U1", "text": "Refunds are ready"},
-                ],
-            },
-        )
+    async def get(self, url, *, headers=None, params=None):
+        assert url == "https://www.googleapis.com/calendar/v3/calendars/primary/events/event-1"
+        self.last_headers = headers
+        return httpx.Response(200, json={"summary":"Launch", "description":"Ship on Tuesday"})
 
 
 def make_client(tmp_path: Path) -> tuple[TestClient, FakeBrain]:
@@ -195,6 +156,7 @@ def test_partial_caption_waits_and_manual_override_answers(tmp_path: Path) -> No
         json={"speaker": "Sam", "text": "Thinkerer, what", "is_final": False},
     )
     assert partial.json()["reason"] == "waiting for final caption"
+    client.post(f"/sessions/{session['id']}/context",json={'notes':[{'title':'Update','content':'The refunds migration is Tuesday.'}]})
 
     forced = client.post(
         f"/sessions/{session['id']}/utterances",
@@ -210,70 +172,27 @@ def test_unknown_session_is_404(tmp_path: Path) -> None:
     assert client.get("/sessions/missing").status_code == 404
 
 
-def test_slack_oauth_and_context_import(tmp_path: Path) -> None:
+def test_google_oauth_and_context_import(tmp_path):
     requester = FakeProviderRequester()
-    settings = Settings(
-        backend_api_token="test-token",
-        database_path=tmp_path / "oauth.db",
+    settings = Settings(database_path=tmp_path / "oauth.db", backend_api_token="test-token",
         oauth_encryption_key="a-secure-development-key-that-is-long-enough",
-        slack_client_id="slack-client",
-        slack_client_secret="slack-secret",
-    )
-    app = create_app(
-        settings=settings,
-        brain=FakeBrain(),
-        voice=FakeVoice(),
-        provider_requester=requester,
-    )
-    client = TestClient(app, headers={"Authorization": "Bearer test-token"})
-
-    capabilities = client.get("/platforms")
-    assert capabilities.status_code == 200
-    assert {item["provider"] for item in capabilities.json()} == {
-        "google",
-        "slack",
-        "microsoft",
-        "zoom",
-    }
-
-    before = client.get("/integrations").json()
-    slack_before = next(item for item in before if item["provider"] == "slack")
-    assert slack_before["configured"] is True
-    assert slack_before["connected"] is False
-
-    started = client.post("/integrations/slack/authorize")
-    assert started.status_code == 200
-    authorization_url = started.json()["authorization_url"]
-    query = parse_qs(urlparse(authorization_url).query)
-    assert query["client_id"] == ["slack-client"]
-    assert "channels:history" in query["user_scope"][0]
-
-    connected = client.get(
-        "/integrations/slack/callback",
-        params={"code": "temporary-code", "state": query["state"][0]},
-    )
+        google_client_id="google-client", google_client_secret="google-secret")
+    app = create_app(settings=settings, brain=FakeBrain(), voice=FakeVoice(), provider_requester=requester)
+    client = TestClient(app, headers={"Authorization":"Bearer test-token"})
+    assert client.get("/integrations").json()[0]["configured"]
+    started = client.post("/integrations/google/authorize")
+    query = parse_qs(urlparse(started.json()["authorization_url"]).query)
+    assert query["client_id"] == ["google-client"]
+    assert query["code_challenge_method"] == ["S256"]
+    connected = client.get("/integrations/google/callback", params={"code":"temporary-code", "state":query["state"][0]})
     assert connected.status_code == 200
-    assert connected.json()["account_label"] == "Hackathon"
     assert "access_token" not in connected.text
-    assert "xoxp-private-user-token" not in (tmp_path / "oauth.db").read_bytes().decode(
-        errors="ignore"
-    )
-
-    session_id = client.post(
-        "/sessions",
-        json={"title": "Import demo", "owner_name": "Muste"},
-    ).json()["id"]
-    imported = client.post(
-        f"/sessions/{session_id}/context/import",
-        json={
-            "provider": "slack",
-            "resource_type": "channel",
-            "resource_id": "C123",
-        },
-    )
+    assert b"google-private-token" not in (tmp_path / "oauth.db").read_bytes()
+    session_id = client.post("/sessions", json={"title":"Import", "owner_name":"Aloy"}).json()["id"]
+    imported = client.post(f"/sessions/{session_id}/context/import", json={"provider":"google", "resource_type":"calendar_event", "resource_id":"event-1"})
     assert imported.status_code == 201
-    assert "Refunds are ready\n[2] U2: Ship on Tuesday" in imported.json()[0]["content"]
-    assert requester.last_headers == {"Authorization": "Bearer xoxp-private-user-token"}
+    assert "Ship on Tuesday" in imported.json()[0]["content"]
+    assert requester.last_headers == {"Authorization":"Bearer google-private-token"}
 
 
 def test_private_coach_suggests_what_owner_can_say(tmp_path: Path) -> None:
@@ -282,6 +201,7 @@ def test_private_coach_suggests_what_owner_can_say(tmp_path: Path) -> None:
         "/sessions",
         json={"title": "Coach demo", "owner_name": "Muste"},
     ).json()["id"]
+    client.post(f'/sessions/{session_id}/context',json={'notes':[{'title':'Refunds','content':'The refunds migration is Tuesday.'}]})
     response = client.post(
         f"/sessions/{session_id}/coach",
         json={

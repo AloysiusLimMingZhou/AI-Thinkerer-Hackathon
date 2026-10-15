@@ -81,7 +81,7 @@ export function Icon({ name, size = 18, ...rest }: { name: IconName; size?: numb
   );
 }
 
-export function SourceIcon({ kind, size = 16 }: { kind: "slack" | "drive" | "calendar"; size?: number }) {
-  const name: IconName = kind === "slack" ? "hash" : kind === "drive" ? "doc" : "calendar";
+export function SourceIcon({ kind, size = 16 }: { kind: "note" | "drive" | "calendar"; size?: number }) {
+  const name: IconName = kind === "note" ? "hash" : kind === "drive" ? "doc" : "calendar";
   return <Icon name={name} size={size} />;
 }
