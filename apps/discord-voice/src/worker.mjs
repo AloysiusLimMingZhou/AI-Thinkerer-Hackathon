@@ -24,7 +24,7 @@ async function configure(c){
  transport=new VoiceTransport({voice,client,ffmpegPath:c.ffmpeg_path,emit,maxAttendanceSeconds:c.max_attendance_seconds});
  gateway=new GatewayAdapter({client,transport,emit,guildId:c.guild_id,ownerId:c.owner_id});
  client.on('error',()=>shutdown());client.on('shardDisconnect',()=>{if(transport.call)transport.fail('gateway_disconnected');});
- client.once('clientReady',()=>emit(event('ready',{gateway:true,decoder:true})));
+ client.once('clientReady',()=>emit(event('ready',{gateway:true,decoder:true,self_id:client.user.id})));
  await client.login(process.env.DISCORD_BOT_TOKEN);
  heartbeat=setInterval(()=>transport.health(),5000);
 }
@@ -51,8 +51,9 @@ process.stdin.on('data',chunk=>{
   const line=buffer.subarray(0,index);buffer=buffer.subarray(index+1);
   let c;try{c=parseCommand(line.toString('utf8'));}catch{shutdown();return;}
   if(++pending>16){shutdown();return;}
-  dispatch(c).catch(()=>{
-   if(c.request_id)emit(event('response',{request_id:c.request_id,ok:false,error:'voice_command_failed',data:{}}));
+  dispatch(c).catch(error=>{
+   const code=['voice_channel_required','voice_permissions_required','voice_start_failed','stale_generation','speech_muted','queue_full'].includes(error.message)?error.message:'voice_command_failed';
+   if(c.request_id)emit(event('response',{request_id:c.request_id,ok:false,error:code,data:{}}));
    else shutdown();
   }).finally(()=>pending--);
  }

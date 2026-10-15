@@ -79,7 +79,7 @@ class MeetingService:
         self.repository.record_event(sid,'transcript.utterance',{**entry.model_dump(mode='json'),'participant_id':u.participant_id})
         history=self.repository.get_transcript(sid)
         qa=self.repository.get_qa_log(sid)
-        if self.escalations and not preview and u.is_final and not getattr(self.playback,'muted',lambda _:False)(sid) and await self.playback.is_live(sid) and (datetime.now(UTC)-u.received_at).total_seconds()<=30:
+        if self.escalations and not preview and u.is_final and not getattr(self.playback,'muted',lambda _:False)(sid) and await self.playback.is_live(sid) and max((datetime.now(UTC)-u.received_at).total_seconds(),(datetime.now(UTC)-u.spoken_at).total_seconds())<=30:
             confirmation=self.escalations.handle_confirmation(sid,u)
             if confirmation:
                 self.repository.add_qa(sid,u.text,confirmation.answer or '',[])
@@ -90,7 +90,7 @@ class MeetingService:
         if not u.is_final and not u.force_answer:
             approved,reason=False,'waiting for final caption'
         if not preview:
-            if (datetime.now(UTC)-u.received_at).total_seconds()>30:
+            if max((datetime.now(UTC)-u.received_at).total_seconds(),(datetime.now(UTC)-u.spoken_at).total_seconds())>30:
                 approved,reason=False,'stale transcript'
             elif not await self.playback.is_live(sid):
                 approved,reason=False,'meeting ended'
@@ -141,7 +141,7 @@ class MeetingService:
             self.repository.record_event(sid,'voice.failed',{'id':key})
             await self.playback_failed(sid,key)
             raise
-        with self.repository._connect() as db: db.execute("UPDATE speech_intents SET state='queued' WHERE id=?",(key,))
+        with self.repository._connect() as db: db.execute("UPDATE speech_intents SET state='queued' WHERE id=? AND state='processing'",(key,))
         voice_ms=round((time.perf_counter()-started)*1000)
         self.repository.record_event(sid,'voice.queued',{'id':key,'answer_ms':answer_ms,'voice_ms':voice_ms,'response_ready_ms':answer_ms+voice_ms})
 

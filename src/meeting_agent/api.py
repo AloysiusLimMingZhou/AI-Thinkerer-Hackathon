@@ -27,6 +27,9 @@ from .discord_client import DiscordTransport
 from .discord_api import discord_router
 from .discord_worker import DiscordWorker
 from .discord_attendance import DiscordAttendance
+from .discord_audio import DiscordAudio
+from .discord_playback import DiscordPlayback
+from .transcription import OpenAITranscriber
 from .minutes import MinutesService
 from .knowledge import KnowledgeService
 from .knowledge_api import knowledge_router
@@ -81,6 +84,7 @@ def create_app(
     voice: Voice | None = None,
     provider_requester: Requester | None = None,
     recall_transport=None,
+    discord_worker=None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     repository = repository or SQLiteRepository(settings.database_path)
@@ -103,10 +107,35 @@ def create_app(
     minutes_service=MinutesService(repository,brain,escalations)
     minutes_service.transcript=lambda sid: recall.final_transcript(sid) or repository.get_transcript(sid)
     meeting.minutes=minutes_service
-    discord_worker=DiscordWorker(settings)
+    discord_worker=discord_worker or DiscordWorker(settings)
     attendance=DiscordAttendance(settings,repository,briefings,discord_worker,playback,budget)
+    discord_playback=DiscordPlayback(attendance.store,discord_worker,voice)
+    discord_playback.meeting=meeting
+    discord_playback.on_budget=lambda sid: attendance.leave(sid,reason='budget')
+    playback.adapters['discord']=discord_playback
+    discord_audio=DiscordAudio(OpenAITranscriber(settings,budget),meeting,attendance)
+    attendance.audio=discord_audio
+
+    async def introduce(sid):
+        session=repository.get_session(sid)
+        await meeting.queue_speech(sid,f"I'm {session.agent_name}, {session.owner_name}'s AI delegate. I transcribe this meeting and may answer aloud.",'intro:'+sid)
+    async def finish_discord(sid):
+        if attendance.store.attendance(sid)['state']=='budget_stopped':minutes_service.pending_budget(sid)
+        else:minutes_service.schedule(sid)
+    async def discord_event(event):
+        if event.type=='utterance':await discord_audio.submit(event)
+        elif event.type=='playback':await discord_playback.acknowledge(event)
+        elif event.type=='audio_gap':repository.record_event(event.session_id,'discord.audio_gap',event.model_dump(mode='json'))
+        elif event.type=='owner_reply':
+            from .discord_client import OwnerReply
+            from datetime import UTC,datetime
+            await escalations.receive_owner_reply(OwnerReply(message_id=event.id,guild_id=event.guild_id,channel_id=event.channel_id,author_id=event.author_id,text=event.content,created_at=event.created_at or datetime.now(UTC),is_bot=event.bot,is_webhook=event.webhook,is_edit=event.is_edit,has_attachments=event.has_attachments))
+    attendance.on_started=introduce
+    attendance.on_left=finish_discord
+    attendance.on_event=discord_event
 
     async def discord_voice_lifecycle():
+        await discord_playback.recover()
         await attendance.recover()
         if any(not getattr(settings,key) for key in ('discord_bot_token','discord_guild_id','discord_owner_user_id','discord_escalation_channel_id','openai_api_key','elevenlabs_api_key')):
             return
@@ -117,6 +146,8 @@ def create_app(
             discord.gateway_state='voice_worker_failed; check dependencies and configuration'
         finally:
             await discord_worker.close()
+            await discord_audio.close()
+            await discord_playback.recover()
             await attendance.recover()
 
     @asynccontextmanager
@@ -164,6 +195,8 @@ def create_app(
     app.state.discord = discord
     app.state.discord_attendance = attendance
     app.state.discord_worker = discord_worker
+    app.state.discord_audio = discord_audio
+    app.state.discord_playback = discord_playback
     app.state.minutes = minutes_service
     app.include_router(discord_router(discord,attendance))
     app.include_router(knowledge_router(knowledge))

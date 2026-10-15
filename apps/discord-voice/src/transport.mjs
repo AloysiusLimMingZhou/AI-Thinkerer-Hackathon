@@ -21,7 +21,7 @@ export class VoiceTransport{
    this.connection.on('error',()=>this.fail('connection_error'));
    await this.voice.entersState(this.connection,this.voice.VoiceConnectionStatus.Ready,15000);
    if(!this.call)throw Error('join_interrupted');
-   this.capture=new AudioCapture({emit:this.emit,clock:this.clock,ffmpegPath:this.ffmpegPath,endBehavior:this.voice.EndBehaviorType.AfterSilence});
+   this.capture=new AudioCapture({emit:e=>{this.emit(e);if(e.type==='audio_gap'&&['decoder_failed','receive_failed'].includes(e.reason))this.fail('decoder_failed');},clock:this.clock,ffmpegPath:this.ffmpegPath,endBehavior:this.voice.EndBehaviorType.AfterSilence});
    this.onSpeaking=id=>{const member=this.channel.members.get(id);if(member)this.capture?.subscribe(this.connection.receiver,member,this.call);};
    this.connection.receiver.speaking.on('start',this.onSpeaking);
    this.player=this.voice.createAudioPlayer();this.subscription=this.connection.subscribe(this.player);

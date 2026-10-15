@@ -39,6 +39,8 @@ class AudioUtterance(Scoped):
     spoken_at: AwareDatetime
     received_at: AwareDatetime
     wav_base64: str
+    is_bot: bool=False
+    is_self: bool=False
     @field_validator('wav_base64')
     @classmethod
     def audio(cls,value): decode_media(value,MAX_WAV); return value
@@ -58,6 +60,7 @@ class Ready(Strict):
     type: Literal['ready']='ready'
     gateway: bool
     decoder: bool
+    self_id: Id|None=None
 class Response(Strict):
     type: Literal['response']='response'
     request_id: Id
@@ -79,6 +82,9 @@ class OwnerReply(Strict):
     content: Annotated[str,Field(max_length=4000)]
     bot: bool=False
     webhook: bool=False
+    is_edit: bool=False
+    has_attachments: bool=False
+    created_at: AwareDatetime|None=None
 WorkerEvent=Annotated[Union[WorkerHealth,DiscordCommandRequest,AudioUtterance,PlaybackAck,AudioGap,Disconnected,Ready,Response,Autocomplete,OwnerReply],Field(discriminator='type')]
 EVENT=TypeAdapter(WorkerEvent)
 def decode_media(value,limit):

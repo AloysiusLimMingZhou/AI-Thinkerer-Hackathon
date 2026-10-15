@@ -5,7 +5,7 @@ export class GatewayAdapter{
   this.onInteraction=i=>this.interaction(i).catch(()=>{});
   this.onMessage=m=>{
    if(m.guildId!==this.guildId||m.author?.id!==this.ownerId||m.author.bot||m.webhookId||!m.channel?.isThread())return;
-   this.emit(event('owner_reply',{id:m.id,guild_id:m.guildId,channel_id:m.channelId,author_id:m.author.id,content:m.content.slice(0,4000),bot:false,webhook:false}));
+   this.emit(event('owner_reply',{id:m.id,guild_id:m.guildId,channel_id:m.channelId,author_id:m.author.id,content:m.content.slice(0,4000),bot:false,webhook:false,is_edit:!!m.editedTimestamp,has_attachments:!!m.attachments?.size,created_at:new Date(m.createdTimestamp).toISOString()}));
   };
   client.on('interactionCreate',this.onInteraction);client.on('messageCreate',this.onMessage);
  }

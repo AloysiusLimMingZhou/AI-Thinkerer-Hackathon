@@ -97,14 +97,26 @@ class DiscordAttendance:
         self.store.execute("INSERT INTO discord_attendance(session_id,guild_id,channel_id,generation,state,started_at) VALUES(?,?,?,?,'joining',?)",(session.id,request.guild_id,request.channel_id,generation,datetime.now(UTC).isoformat()))
         try:
             health=await self.worker.request(command('join',session_id=session.id,generation=generation,guild_id=request.guild_id,channel_id=request.channel_id))
-        except WorkerUnavailable:
+        except WorkerUnavailable as error:
+            if str(error) in {'voice_channel_required','voice_permissions_required','voice_start_failed'}:
+                self.store.transition(session.id,'failed',error=str(error))
+                self.worker.generations.pop(session.id,None)
+                return {'ok':False,'code':str(error),'session_id':session.id}
             self.store.execute('UPDATE discord_attendance SET error=? WHERE session_id=?',('Join outcome uncertain; check status before retrying',session.id))
             return {'ok':False,'code':'join_uncertain','session_id':session.id}
         if not all(health.get(k) for k in ('connection','decoder','receiver','player')):
             await self.leave(session.id,reason='startup_failed')
             return {'ok':False,'code':'receive_not_ready','session_id':session.id}
         self.store.transition(session.id,'active',health={k:bool(health.get(k)) for k in ('gateway','connection','decoder','receiver','player')})
-        if self.on_started:await self.on_started(session.id)
+        if self.on_started:
+            try:await self.on_started(session.id)
+            except BudgetExceeded:
+                await self.leave(session.id,reason='budget')
+                return {'ok':False,'code':'monthly_budget_exhausted','session_id':session.id}
+            except Exception:
+                self.store.execute("UPDATE discord_attendance SET introduction='failed' WHERE session_id=?",(session.id,))
+                await self.leave(session.id,reason='startup_failed')
+                return {'ok':False,'code':'introduction_failed','session_id':session.id}
         return {'ok':True,'code':'joined','session_id':session.id,'dashboard_url':self.settings.web_base_url+'/meetings/'+session.id}
 
     async def control(self,sid,action):
@@ -139,7 +151,7 @@ class DiscordAttendance:
 
     async def recover(self):
         for row in self.store.all("SELECT * FROM discord_attendance WHERE state IN ('joining','active','leaving')"):
-            self.store.transition(row['session_id'],'interrupted',error='Worker interrupted; join again explicitly')
+            self.store.transition(row['session_id'],'interrupted',error='Worker interrupted; join again explicitly',health={k:False for k in ('gateway','connection','decoder','receiver','player')})
             if self.on_left:await self.on_left(row['session_id'])
 
     async def handle_event(self,event):
@@ -149,6 +161,9 @@ class DiscordAttendance:
                 s=result;row=s.get('attendance');b=s['budget'];message=f"Meeting: {row['state'] if row else 'none'}. Receive: {s['worker_health']['receiver']}. Models: {', '.join(s['models'].values())}. Estimated USD {b['settled_micro_usd']/1e6:.2f} settled, {b['held_micro_usd']/1e6:.2f} held; USD {b['available_micro_usd']/1e6:.2f} available. "+('Soft budget warning. ' if b['soft_warning'] else '')+f"Reset: {b['reset_at']}."
             else:message=result.get('dashboard_url') or result.get('message') or result.get('code','Done')
             await self.worker.request(command('interaction_result',interaction_id=event.interaction_id,content=message[:2000]))
+            return
+        if event.type=='owner_reply':
+            if self.on_event:await self.on_event(event)
             return
         if event.type=='autocomplete':
             choices=self.choices(event.query) if not self.authorized(event.guild_id,event.actor_id) else []
@@ -162,7 +177,7 @@ class DiscordAttendance:
                 self.store.execute('UPDATE discord_attendance SET health_json=? WHERE session_id=?',(json.dumps(health),event.session_id))
             elif event.type=='disconnected':
                 if self.audio:await self.audio.cancel(event.session_id)
-                self.store.transition(event.session_id,'ended' if event.reason in {'empty_channel','maximum_duration'} else 'interrupted',error=event.reason)
+                self.store.transition(event.session_id,'ended' if event.reason in {'empty_channel','maximum_duration'} else 'interrupted',error=event.reason,health={k:False for k in ('gateway','connection','decoder','receiver','player')})
                 self.worker.generations.pop(event.session_id,None)
                 if self.on_left:await self.on_left(event.session_id)
         if self.on_event:await self.on_event(event)

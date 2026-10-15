@@ -11,6 +11,7 @@ class DiscordWorker:
         self.process=None
         self.pending={}
         self.generations={}
+        self.self_id=None
         self.diagnostics=bytearray()
         self._health=WorkerHealth()
         self.last_health=0
@@ -84,7 +85,9 @@ class DiscordWorker:
                 if event.type in {'ready','health'}:
                     self.last_health=time.monotonic()
                     if event.type=='health': self._health=event
-                    else: self._health=WorkerHealth(gateway=event.gateway,decoder=event.decoder)
+                    else:
+                        self._health=WorkerHealth(gateway=event.gateway,decoder=event.decoder)
+                        self.self_id=event.self_id
                 if len(self._event_tasks)>=16: break
                 task=asyncio.create_task(self._handle(on_event,event))
                 self._event_tasks.add(task)
