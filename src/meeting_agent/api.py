@@ -5,7 +5,7 @@ import hmac
 from uuid import uuid4
 from .meeting_service import MeetingService, grounded_result
 from .meeting_models import MeetingUtterance
-from .playback import RecallPlayback
+from .playback import RecallPlayback, PlaybackRouter
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import (
@@ -20,12 +20,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from .config import Settings
+from .budget import BudgetService, BudgetExceeded, PaidCallContext, paid_call_context
+from .budget_api import budget_router
 from .escalations import EscalationService
 from .discord_client import DiscordTransport
 from .discord_api import discord_router
+from .discord_worker import DiscordWorker
+from .discord_attendance import DiscordAttendance
+from .discord_audio import DiscordAudio
+from .discord_playback import DiscordPlayback
+from .transcription import OpenAITranscriber
 from .minutes import MinutesService
 from .knowledge import KnowledgeService
 from .knowledge_api import knowledge_router
+from .briefings import BriefingService
+from .briefing_api import briefing_router
 from .integrations import (
     ContextImporter,
     IntegrationError,
@@ -75,16 +84,19 @@ def create_app(
     voice: Voice | None = None,
     provider_requester: Requester | None = None,
     recall_transport=None,
+    discord_worker=None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     repository = repository or SQLiteRepository(settings.database_path)
-    brain = brain or OpenAIBrain(settings)
-    voice = voice or ElevenLabsVoice(settings)
+    budget = BudgetService(repository, settings)
+    brain = brain or OpenAIBrain(settings, budget)
+    voice = voice or ElevenLabsVoice(settings, budget)
     oauth = OAuthManager(settings, repository, provider_requester)
     context_importer = ContextImporter(oauth)
     knowledge = KnowledgeService(repository)
+    briefings = BriefingService(repository, knowledge)
     recall = RecallService(settings, repository, brain, voice, recall_transport)
-    playback = RecallPlayback(recall)
+    playback = PlaybackRouter(repository, {'google_meet': RecallPlayback(recall)})
     meeting = MeetingService(repository, brain, knowledge, playback)
     recall.meeting = meeting
     escalations=EscalationService(repository,meeting)
@@ -95,12 +107,54 @@ def create_app(
     minutes_service=MinutesService(repository,brain,escalations)
     minutes_service.transcript=lambda sid: recall.final_transcript(sid) or repository.get_transcript(sid)
     meeting.minutes=minutes_service
+    discord_worker=discord_worker or DiscordWorker(settings)
+    attendance=DiscordAttendance(settings,repository,briefings,discord_worker,playback,budget)
+    discord_playback=DiscordPlayback(attendance.store,discord_worker,voice)
+    discord_playback.meeting=meeting
+    discord_playback.on_budget=lambda sid: attendance.leave(sid,reason='budget')
+    playback.adapters['discord']=discord_playback
+    discord_audio=DiscordAudio(OpenAITranscriber(settings,budget),meeting,attendance)
+    attendance.audio=discord_audio
+
+    async def introduce(sid):
+        session=repository.get_session(sid)
+        await meeting.queue_speech(sid,f"I'm {session.agent_name}, {session.owner_name}'s AI delegate. I transcribe this meeting and may answer aloud.",'intro:'+sid)
+    async def finish_discord(sid):
+        if attendance.store.attendance(sid)['state']=='budget_stopped':minutes_service.pending_budget(sid)
+        else:minutes_service.schedule(sid)
+    async def discord_event(event):
+        if event.type=='utterance':await discord_audio.submit(event)
+        elif event.type=='playback':await discord_playback.acknowledge(event)
+        elif event.type=='audio_gap':repository.record_event(event.session_id,'discord.audio_gap',event.model_dump(mode='json'))
+        elif event.type=='owner_reply':
+            from .discord_client import OwnerReply
+            from datetime import UTC,datetime
+            await escalations.receive_owner_reply(OwnerReply(message_id=event.id,guild_id=event.guild_id,channel_id=event.channel_id,author_id=event.author_id,text=event.content,created_at=event.created_at or datetime.now(UTC),is_bot=event.bot,is_webhook=event.webhook,is_edit=event.is_edit,has_attachments=event.has_attachments))
+    attendance.on_started=introduce
+    attendance.on_left=finish_discord
+    attendance.on_event=discord_event
+
+    async def discord_voice_lifecycle():
+        await discord_playback.recover()
+        await attendance.recover()
+        if any(not getattr(settings,key) for key in ('discord_bot_token','discord_guild_id','discord_owner_user_id','discord_escalation_channel_id','openai_api_key','elevenlabs_api_key')):
+            return
+        try:
+            await discord_worker.start()
+            await discord_worker.run(attendance.handle_event)
+        except Exception:
+            discord.gateway_state='voice_worker_failed; check dependencies and configuration'
+        finally:
+            await discord_worker.close()
+            await discord_audio.close()
+            await discord_playback.recover()
+            await attendance.recover()
 
     @asynccontextmanager
     async def lifespan(app):
         worker = asyncio.create_task(recall.worker())
         escalation_worker = asyncio.create_task(escalations.worker())
-        gateway = asyncio.create_task(discord.gateway(escalations))
+        gateway = asyncio.create_task(discord_voice_lifecycle() if settings.discord_voice_enabled else discord.gateway(escalations))
         minutes_worker = asyncio.create_task(minutes_service.worker())
         try:
             yield
@@ -124,14 +178,27 @@ def create_app(
         description="Context-aware meeting delegate backend.",
         lifespan=lifespan,
     )
+    app.state.budget = budget
+    app.include_router(budget_router(budget))
+
+    @app.exception_handler(BudgetExceeded)
+    async def budget_error(request, exc):
+        return JSONResponse({'detail': {'code':'monthly_budget_exhausted','message':str(exc),'reset_at':exc.status.reset_at.isoformat(),'available_micro_usd':exc.status.available_micro_usd}},status_code=429)
+
     app.state.recall = recall
     app.state.knowledge = knowledge
+    app.state.briefings = briefings
+    app.include_router(briefing_router(briefings))
     app.state.meeting = meeting
     app.state.playback = playback
     app.state.escalations = escalations
     app.state.discord = discord
+    app.state.discord_attendance = attendance
+    app.state.discord_worker = discord_worker
+    app.state.discord_audio = discord_audio
+    app.state.discord_playback = discord_playback
     app.state.minutes = minutes_service
-    app.include_router(discord_router(discord))
+    app.include_router(discord_router(discord,attendance))
     app.include_router(knowledge_router(knowledge))
 
     @app.middleware("http")
@@ -212,6 +279,12 @@ def create_app(
         session = repository.get_session(session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
+        return session
+
+    def require_meeting(session_id: str):
+        session = require_session(session_id)
+        if session.purpose != "meeting":
+            raise HTTPException(409, "This is a briefing; use /join to create a meeting")
         return session
 
     @app.get('/sessions/{session_id}/questions',tags=['meeting'])
@@ -363,7 +436,7 @@ def create_app(
     async def ingest_utterance(
         session_id: str, payload: UtteranceCreate
     ) -> AgentDecision:
-        require_session(session_id)
+        require_meeting(session_id)
         return await meeting.ingest(session_id,MeetingUtterance(
             event_id=payload.event_id or str(uuid4()),platform="preview",
             participant_id=payload.participant_id,speaker=payload.speaker,
@@ -376,7 +449,7 @@ def create_app(
         tags=["meeting"],
     )
     async def coach(session_id: str, payload: CoachRequest) -> CoachSuggestion:
-        session = require_session(session_id)
+        session = require_meeting(session_id)
         query = " ".join(
             item for item in (payload.latest_message, payload.objective) if item
         )
@@ -407,9 +480,10 @@ def create_app(
 
     @app.post("/sessions/{session_id}/speak", tags=["voice"])
     async def speak(session_id: str, payload: SpeakRequest) -> Response:
-        require_session(session_id)
+        require_meeting(session_id)
         try:
-            audio = await voice.generate(payload.text)
+            with paid_call_context(PaidCallContext(session_id, str(uuid4()), 'manual-speech')):
+                audio = await voice.generate(payload.text)
         except IntegrationUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         repository.record_event(session_id, "voice.generated", {"text": payload.text})
@@ -425,7 +499,7 @@ def create_app(
         tags=["minutes"],
     )
     async def generate_minutes(session_id: str) -> MinutesView:
-        require_session(session_id)
+        require_meeting(session_id)
         transcript_entries = recall.final_transcript(
             session_id
         ) or repository.get_transcript(session_id)

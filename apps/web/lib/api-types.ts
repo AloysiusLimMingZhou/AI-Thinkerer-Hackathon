@@ -7,6 +7,10 @@ export type SessionStatus = "created" | "active" | "ended";
 
 export interface Session {
   id: string;
+  platform: 'google_meet' | 'discord';
+  purpose: 'meeting' | 'briefing';
+  source_briefing_id: string | null;
+  briefing_ready: boolean;
   title: string;
   owner_name: string;
   agent_name: string;
@@ -96,7 +100,7 @@ export interface DiscordStatus {
 
 export interface Finalization {
   session_id: string;
-  state: "idle" | "processing" | "ready" | "failed";
+  state: "idle" | "processing" | "ready" | "failed" | "pending_budget";
   error: string | null;
 }
 
@@ -107,4 +111,21 @@ export interface UnansweredQuestion {
   state: string;
   error: string | null;
   thread_id: string | null;
+}
+
+
+export interface VoiceHealth { gateway: boolean; connection: boolean; decoder: boolean; receiver: boolean; player: boolean }
+export interface DiscordAttendance {
+ session_id: string; guild_id: string; channel_id: string; generation: string;
+ state: 'joining' | 'active' | 'leaving' | 'ended' | 'interrupted' | 'failed' | 'budget_stopped';
+ health: VoiceHealth; muted: boolean; introduction: string; error: string | null; started_at: string; ended_at: string | null;
+}
+export interface DiscordAttendanceStatus {
+ attendance: DiscordAttendance | null; worker_health: VoiceHealth; missing: string[]; voice_attendance_available: boolean;
+}
+export interface BudgetStatus {
+ month: string; timezone: string; reset_at: string; soft_limit_micro_usd: number; hard_limit_micro_usd: number;
+ settled_micro_usd: number; held_micro_usd: number; available_micro_usd: number;
+ uncertain_count: number; soft_warning: boolean; last_denied: boolean; price_version: string; scope: string;
+ providers: Record<string,{settled_micro_usd:number;held_micro_usd:number}>;
 }

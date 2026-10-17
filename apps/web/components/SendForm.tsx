@@ -10,6 +10,7 @@ import { WhenField } from "./WhenField";
 
 /** Create a session, save the briefing, and launch the bot, in one step. */
 export function SendForm({ ready }: { ready: boolean }) {
+  const [platform, setPlatform] = useState<'google_meet'|'discord'>('google_meet');
   const router = useRouter();
   const [state, action, pending] = useActionState<ActionState, FormData>(sendToMeeting, null);
   const [agent, setAgent] = useState(DEFAULT_AGENT);
@@ -25,13 +26,15 @@ export function SendForm({ ready }: { ready: boolean }) {
 
   return (
     <form action={action} className={styles.form}>
-      <label className={styles.field}>
+      <label className={styles.field}><span className={styles.label}>Platform</span><select name="platform" value={platform} onChange={e=>setPlatform(e.target.value as 'google_meet'|'discord')} disabled={pending||!!state?.sessionId}><option value="google_meet">Google Meet</option><option value="discord">Discord briefing</option></select>{state?.sessionId&&<input type="hidden" name="platform" value={platform}/>}</label>
+      {platform === 'discord' && <p className={styles.hint}>Save knowledge here, then summon your delegate with /join in Discord. Choose the briefing from the optional picker.</p>}
+      {platform === 'google_meet' && <label className={styles.field}>
         <span className={styles.label}>Meeting link</span>
         <input name="meeting_url" value={values.meeting_url} onChange={(e) => update("meeting_url", e.target.value)} type="url" required inputMode="url" placeholder="https://meet.google.com/abc-defg-hij" autoComplete="off" />
-      </label>
+      </label>}
 
       <label className={styles.field}>
-        <span className={styles.label}>What’s the meeting?</span>
+        <span className={styles.label}>{platform === 'discord' ? 'Briefing name' : 'Meeting name'}</span>
         <input name="title" value={values.title} onChange={(e) => update("title", e.target.value)} required maxLength={200} placeholder="Weekly payments sync" />
       </label>
 
@@ -69,19 +72,19 @@ export function SendForm({ ready }: { ready: boolean }) {
         People say “{name}” to ask it something, e.g. “{name}, what’s the latest on the budget?” It joins as “{name} (AI delegate)”.
       </p>
 
-      <WhenField onChange={setScheduled} />
+      {platform === 'google_meet' && <WhenField onChange={setScheduled} />}
 
-      <label className={styles.consent}>
+      {platform === 'google_meet' && <label className={styles.consent}>
         <input type="checkbox" name="consent" value="yes" required />
         <span>People in this meeting know {name} will join, transcribe it, and may answer questions out loud.</span>
-      </label>
+      </label>}
 
       <button type="submit" className={`btn btn-primary ${styles.submit}`} disabled={pending}>
         <span className="lamp" aria-hidden="true" />
-        {pending ? "Sending…" : scheduled ? `Schedule ${name}` : `Send ${name} now`}
+        {pending ? 'Saving…' : platform === 'discord' ? 'Save Discord briefing' : scheduled ? `Schedule ${name}` : `Send ${name} now`}
       </button>
 
-      {!ready && <p className={styles.note}>The backend is missing some settings (see below), so the launch will fail until they’re added.</p>}
+      {platform === 'google_meet' && !ready && <p className={styles.note}>The backend is missing some settings (see below), so the launch will fail until they’re added.</p>}
 
       <div aria-live="polite">
         {state?.error && (

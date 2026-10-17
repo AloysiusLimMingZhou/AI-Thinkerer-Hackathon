@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
 
 def utc_now() -> datetime:
@@ -26,6 +26,20 @@ class SessionCreate(BaseModel):
     owner_name: str = Field(min_length=1, max_length=100)
     agent_name: str = Field(default="Alloy", min_length=1, max_length=100)
     meeting_url: str | None = Field(default=None, max_length=2_000)
+    platform: Literal["google_meet", "discord"] = "google_meet"
+    purpose: Literal["meeting", "briefing"] = "meeting"
+    source_briefing_id: str | None = Field(default=None, max_length=200)
+    briefing_ready: bool = False
+
+    @model_validator(mode="after")
+    def validate_platform_purpose(self):
+        if self.platform == "discord" and self.meeting_url:
+            raise ValueError("Discord sessions do not use a meeting URL")
+        if self.purpose == "briefing" and self.platform != "discord":
+            raise ValueError("Prepared briefings are for Discord")
+        if self.purpose == "meeting" and self.briefing_ready:
+            raise ValueError("Only briefings can be marked ready")
+        return self
 
 
 class SessionView(SessionCreate):

@@ -7,6 +7,8 @@ import time
 from datetime import UTC, datetime
 
 from meeting_agent.config import Settings
+from meeting_agent.repository import SQLiteRepository
+from meeting_agent.budget import BudgetService
 from meeting_agent.models import SessionView, TranscriptEntry
 from meeting_agent.knowledge import KnowledgeChunk
 from meeting_agent.meeting_service import grounded_result,social_request
@@ -15,7 +17,8 @@ from meeting_agent.services import ElevenLabsVoice, OpenAIBrain
 
 async def main():
     settings = Settings.from_env()
-    brain = OpenAIBrain(settings)
+    budget = BudgetService(SQLiteRepository(settings.database_path), settings)
+    brain = OpenAIBrain(settings, budget)
     session = SessionView(
         id="eval",
         title="Demo launch",
@@ -94,7 +97,7 @@ async def main():
             )
         )
     started = time.perf_counter()
-    audio = await ElevenLabsVoice(settings).generate(
+    audio = await ElevenLabsVoice(settings, budget).generate(
         "We haven't settled the budget yet."
     )
     print(

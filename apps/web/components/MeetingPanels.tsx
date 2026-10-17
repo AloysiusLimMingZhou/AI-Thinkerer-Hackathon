@@ -1,4 +1,5 @@
 import Markdown from "react-markdown";
+import {minutesState} from "@/lib/attendance";
 import type { ActionState } from "@/app/actions";
 import type { ContextNote, Finalization, Minutes, UnansweredQuestion } from "@/lib/api-types";
 import { clock, plural, shortDay } from "@/lib/format";
@@ -16,16 +17,20 @@ export function MinutesPanel({
   finalization,
   agent,
   hasTranscript,
+  platform = 'google_meet',
   write,
 }: {
   minutes: Minutes | null;
   finalization: Finalization;
   agent: string;
   hasTranscript: boolean;
+  platform?: 'google_meet'|'discord';
   write: (prev: ActionState) => Promise<ActionState>;
 }) {
+  const noteState=minutesState(finalization,!!minutes);
   const status = finalization.state === "processing"
     ? <p role="status">Processing meeting notes. This page will update when they are ready.</p>
+     : finalization.state === "pending_budget" ? <p role="status">The AI budget could not cover a complete summary. Your transcript and tracked questions are saved. Generate notes manually after the budget resets.</p>
     : finalization.state === "failed" ? <p role="alert">{finalization.error || "Minutes generation failed. Retry below."}</p> : null;
   if (!minutes) {
     return (
@@ -33,10 +38,10 @@ export function MinutesPanel({
         {status}
         <h3>No minutes yet</h3>
         <p>
-          {agent} writes them automatically once Recall finishes the transcript after the call.
+          {platform==='discord'?`${agent} writes notes after leaving the voice channel.`:`${agent} writes them once Recall finishes the transcript after the call.`}
           {hasTranscript ? " You can also write them now from what’s been transcribed so far." : " Nothing has been transcribed yet."}
         </p>
-        {hasTranscript && finalization.state !== "processing" && <WriteMinutesButton action={write} label="Write minutes now" />}
+        {hasTranscript && finalization.state !== "processing" && <WriteMinutesButton action={write} label={noteState.label} />}
       </div>
     );
   }
@@ -48,9 +53,9 @@ export function MinutesPanel({
       </div>
       <div className={styles.provenance}>
         <p>
-          Written by {agent} at {clock(minutes.updated_at)} on {shortDay(minutes.updated_at)}, from the transcript and its answers.
+          {noteState.ready?`Written by ${agent} at ${clock(minutes.updated_at)} on ${shortDay(minutes.updated_at)}, from the transcript and its answers.`:'Saved notes are available; a complete current summary is still pending.'}
         </p>
-        <WriteMinutesButton action={write} label="Rewrite from the latest transcript" />
+        <WriteMinutesButton action={write} label={noteState.label} />
       </div>
     </div>
   );

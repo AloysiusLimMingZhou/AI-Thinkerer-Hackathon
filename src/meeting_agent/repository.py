@@ -122,6 +122,17 @@ class SQLiteRepository:
             if 'participant_id' not in columns:
                 connection.execute('ALTER TABLE transcript ADD COLUMN participant_id TEXT')
 
+        with self._connect() as connection:
+            columns = {row[1] for row in connection.execute('PRAGMA table_info(sessions)')}
+            for name, definition in {
+                "platform": "TEXT NOT NULL DEFAULT 'google_meet'",
+                "purpose": "TEXT NOT NULL DEFAULT 'meeting'",
+                "source_briefing_id": "TEXT",
+                "briefing_ready": "INTEGER NOT NULL DEFAULT 0",
+            }.items():
+                if name not in columns:
+                    connection.execute(f"ALTER TABLE sessions ADD COLUMN {name} {definition}")
+
     @staticmethod
     def _session_from_row(row: sqlite3.Row) -> SessionView:
         return SessionView(
@@ -132,31 +143,27 @@ class SQLiteRepository:
             meeting_url=row["meeting_url"],
             status=row["status"],
             created_at=row["created_at"],
+            platform=row["platform"], purpose=row["purpose"],
+            source_briefing_id=row["source_briefing_id"], briefing_ready=bool(row["briefing_ready"]),
         )
 
-    def create_session(self, payload: SessionCreate) -> SessionView:
-        session_id = str(uuid4())
-        created_at = _now_iso()
-        with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO sessions
-                    (id, title, owner_name, agent_name, meeting_url, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    session_id,
-                    payload.title,
-                    payload.owner_name,
-                    payload.agent_name,
-                    payload.meeting_url,
-                    SessionStatus.CREATED,
-                    created_at,
-                ),
-            )
-        session = self.get_session(session_id)
-        assert session is not None
-        return session
+    @staticmethod
+    def _insert_session(connection, payload, session_id, created_at):
+        connection.execute("""
+            INSERT INTO sessions
+                (id,title,owner_name,agent_name,meeting_url,status,created_at,platform,purpose,source_briefing_id,briefing_ready)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        """, (session_id,payload.title,payload.owner_name,payload.agent_name,payload.meeting_url,
+            SessionStatus.CREATED,created_at,payload.platform,payload.purpose,payload.source_briefing_id,int(payload.briefing_ready)))
+
+    def create_session(self, payload: SessionCreate, *, connection=None) -> SessionView:
+        session_id, created_at = str(uuid4()), _now_iso()
+        if connection is not None:
+            self._insert_session(connection,payload,session_id,created_at)
+        else:
+            with self._connect() as db:
+                self._insert_session(db,payload,session_id,created_at)
+        return SessionView(id=session_id,status=SessionStatus.CREATED,created_at=created_at,**payload.model_dump())
 
     def get_session(self, session_id: str) -> SessionView | None:
         with self._connect() as connection:

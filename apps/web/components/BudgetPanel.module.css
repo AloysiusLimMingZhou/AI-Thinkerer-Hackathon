@@ -1,0 +1,9 @@
+.panel {padding:20px 0;border-top:1px solid var(--rule);font-size:var(--t-14);color:var(--ink-2);display:grid;gap:12px;}
+.panel h2 {font-size:var(--t-18);color:var(--ink);}
+.period {font-size:var(--t-12);}
+.amounts {margin:0;display:grid;gap:8px;}
+.amounts div {display:flex;justify-content:space-between;gap:16px;}
+.amounts dd {margin:0;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap;}
+.warning {padding:12px;background:var(--amber-wash);color:var(--amber);border-radius:var(--radius-control);}
+.panel details p {margin-top:8px;}
+.panel summary {cursor:pointer;color:var(--ink);}

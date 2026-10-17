@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from .meeting_models import BrainAnswer, UNKNOWN_ANSWER
 from .models import AgentDecision, Citation, UtteranceCreate
 from .services import conversation_gate
+from .budget import PaidCallContext, paid_call_context
 
 
 def social_request(text,name):
@@ -50,7 +51,8 @@ class MeetingService:
 
     async def ingest(self,sid,utterance,*,preview=False):
         async with self.locks.setdefault(sid,asyncio.Lock()):
-            return await self._ingest(sid,utterance,preview)
+            with paid_call_context(PaidCallContext(sid, f'ingest:{utterance.platform}:{utterance.event_id}', 'ingest')):
+                return await self._ingest(sid,utterance,preview)
 
     async def _ingest(self,sid,u,preview):
         key=hashlib.sha256(f'{sid}:{u.platform}:{u.event_id}'.encode()).hexdigest()
@@ -66,7 +68,7 @@ class MeetingService:
             if prior:
                 return AgentDecision.model_validate_json(prior['decision']) if prior['decision'] else AgentDecision(action='stay_silent',reason='Interrupted input needs attention')
             db.execute('INSERT INTO meeting_inputs VALUES(?,?,?,NULL)',(key,sid,'processing'))
-        is_self=u.is_self or u.speaker.casefold() in {session.agent_name.casefold(),f'{session.agent_name} (AI delegate)'.casefold()}
+        is_self=u.is_self or (not u.participant_id and u.speaker.casefold() in {session.agent_name.casefold(),f'{session.agent_name} (AI delegate)'.casefold()})
         if is_self:
             decision=AgentDecision(action='stay_silent',reason='agent own voice')
             self._decision(sid,key,decision)
@@ -77,26 +79,25 @@ class MeetingService:
         self.repository.record_event(sid,'transcript.utterance',{**entry.model_dump(mode='json'),'participant_id':u.participant_id})
         history=self.repository.get_transcript(sid)
         qa=self.repository.get_qa_log(sid)
-        if self.escalations and not preview and u.is_final and not getattr(self.playback,'muted',lambda _:False)(sid) and await self.playback.is_live(sid) and (datetime.now(UTC)-u.received_at).total_seconds()<=30:
+        if self.escalations and not preview and u.is_final and not getattr(self.playback,'muted',lambda _:False)(sid) and await self.playback.is_live(sid) and max((datetime.now(UTC)-u.received_at).total_seconds(),(datetime.now(UTC)-u.spoken_at).total_seconds())<=30:
             confirmation=self.escalations.handle_confirmation(sid,u)
             if confirmation:
                 self.repository.add_qa(sid,u.text,confirmation.answer or '',[])
                 self._decision(sid,key,confirmation,entry.id)
                 await self.queue_speech(sid,confirmation.answer or '',key)
                 return confirmation
-        approved,reason=conversation_gate(u.text,speaker=u.speaker,session=session,transcript=history,qa_log=qa,force_answer=u.force_answer)
+        approved,reason=conversation_gate(u.text,speaker=u.speaker,participant_id=u.participant_id,session=session,transcript=history,qa_log=qa,force_answer=u.force_answer)
         if not u.is_final and not u.force_answer:
             approved,reason=False,'waiting for final caption'
         if not preview:
-            if (datetime.now(UTC)-u.received_at).total_seconds()>30:
+            if max((datetime.now(UTC)-u.received_at).total_seconds(),(datetime.now(UTC)-u.spoken_at).total_seconds())>30:
                 approved,reason=False,'stale transcript'
             elif not await self.playback.is_live(sid):
                 approved,reason=False,'meeting ended'
             elif getattr(self.playback,'muted',lambda _:False)(sid):
                 approved,reason=False,'speech muted'
-            elif hasattr(self.playback,'recall'):
-                pending=self.playback.recall.store.one("SELECT COUNT(*) AS n FROM recall_audio WHERE session_id=? AND expires>? AND state IN ('queued','playing')",(sid,time.time()))['n']
-                if pending>=2: approved,reason=False,'reply queue full'
+            elif not self.playback.available(sid):
+                approved,reason=False,'reply queue full'
         if not approved:
             decision=AgentDecision(action='stay_silent',reason=reason)
             self._decision(sid,key,decision,entry.id)
@@ -140,7 +141,7 @@ class MeetingService:
             self.repository.record_event(sid,'voice.failed',{'id':key})
             await self.playback_failed(sid,key)
             raise
-        with self.repository._connect() as db: db.execute("UPDATE speech_intents SET state='queued' WHERE id=?",(key,))
+        with self.repository._connect() as db: db.execute("UPDATE speech_intents SET state='queued' WHERE id=? AND state='processing'",(key,))
         voice_ms=round((time.perf_counter()-started)*1000)
         self.repository.record_event(sid,'voice.queued',{'id':key,'answer_ms':answer_ms,'voice_ms':voice_ms,'response_ready_ms':answer_ms+voice_ms})
 

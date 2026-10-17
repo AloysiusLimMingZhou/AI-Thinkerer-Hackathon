@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 from .escalation_store import EscalationStore
 from .models import AgentDecision
+from .budget import BudgetExceeded
 
 
 @dataclass
@@ -55,7 +56,7 @@ class EscalationService:
         return question
 
     def _same_speaker(self,question,u):
-        if u.speaker=='Unknown participant': return False
+        if u.speaker=='Unknown participant' and not u.participant_id: return False
         if question['participant_id'] and u.participant_id:
             return question['participant_id']==u.participant_id
         return question['speaker'].casefold()==u.speaker.casefold()
@@ -64,7 +65,7 @@ class EscalationService:
         self.store.execute("UPDATE unanswered_questions SET state='urgency_expired',error='Prompt playback failed' WHERE session_id=? AND prompt_key=? AND state='awaiting_urgency'",(sid,key))
 
     def handle_confirmation(self,sid,u):
-        if u.speaker=='Unknown participant' or not u.is_final:
+        if (u.speaker=='Unknown participant' and not u.participant_id) or not u.is_final:
             return None
         text=' '.join(u.text.casefold().replace('’',"'").split())
         negative=bool(re.search(r"\b(?:no rush|don't contact|do not contact|not a priority)\b|^(?:no|nah)\b|\b(?:not|isn't|isnt|don't|dont|do not|doesn't)\b(?:\W+\w+){0,6}\W+urgent\b",text))
@@ -187,8 +188,13 @@ class EscalationService:
             await self._ack(question,'Saved in the meeting notes; not spoken because the meeting has ended.',message_id+':ended')
             if getattr(self.meeting,'minutes',None): self.meeting.minutes.schedule(sid)
             return 'saved_after_end'
-        if getattr(self.meeting.playback,'muted',lambda _:False)(sid) or not getattr(self.meeting.playback,'available',lambda _:True)(sid):
+        if getattr(self.meeting.playback,'muted',lambda _:False)(sid):
+            session=self.repository.get_session(sid)
+            if session.platform=='discord':
+                self.store.execute("UPDATE owner_replies SET state='saved_muted',error='Speech was muted; answer saved without automatic replay' WHERE id=?",(message_id,))
+                return 'saved_muted'
             return 'queued'
+        if not self.meeting.playback.available(sid):return 'queued'
         self.store.execute("UPDATE owner_replies SET state='processing' WHERE id=? AND state='pending'",(message_id,))
         session=self.repository.get_session(sid)
         try:
@@ -201,7 +207,7 @@ class EscalationService:
                 if getattr(self.meeting,'minutes',None): self.meeting.minutes.schedule(sid)
                 await self._ack(question,'Saved in the meeting notes; not spoken because the meeting has ended.',message_id+':ended')
             return state
-        self.store.execute("UPDATE owner_replies SET state='queued' WHERE id=?",(message_id,))
+        self.store.execute("UPDATE owner_replies SET state='queued' WHERE id=? AND state='processing'",(message_id,))
         self.repository.record_event(sid,'owner.relay_queued',{'id':message_id,'question_id':question['id']})
         return 'queued'
 
@@ -229,7 +235,8 @@ class EscalationService:
         for reply in self.store.all("SELECT r.id,q.session_id FROM owner_replies r JOIN unanswered_questions q ON q.id=r.question_id WHERE r.state='processing'"):
             self.owner_playback_failed(reply['session_id'],reply['id'])
         self.store.execute("UPDATE speech_intents SET state='needs_attention' WHERE state='processing'")
-        recall=getattr(self.meeting.playback,'recall',None)
+        playback=self.meeting.playback
+        recall=getattr(playback,'recall',None) or getattr(getattr(playback,'adapters',{}).get('google_meet'),'recall',None)
         if recall:
             def uncertain(key):
                 audio=recall.store.one('SELECT state,expires FROM recall_audio WHERE id=?',(key,))

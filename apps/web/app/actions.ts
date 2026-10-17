@@ -64,6 +64,7 @@ function knowledgePayload(form: FormData, text: string): FormData {
 }
 
 export async function sendToMeeting(prev: ActionState, form: FormData): Promise<ActionState> {
+  if (field(form, 'platform') === 'discord') return saveDiscordBriefing(prev, form);
   const meetingUrl = field(form, "meeting_url");
   const title = field(form, "title") || "Meeting";
   const owner = field(form, "owner_name") || DEFAULT_OWNER;
@@ -167,6 +168,7 @@ export async function writeMinutes(sessionId: string, _prev: ActionState): Promi
   try {
     await backend.generateMinutes(sessionId);
   } catch (e) {
+    revalidatePath(`/meetings/${sessionId}`);
     if (e instanceof BackendError && e.status === 409) return { error: "There's no transcript yet, so there's nothing to write up." };
     return { error: explain(e) };
   }
@@ -190,4 +192,40 @@ export async function tryLine(sessionId: string, _prev: ActionState, form: FormD
     revalidatePath(`/meetings/${sessionId}`);
     return { error: explain(e) };
   }
+}
+
+
+export async function saveDiscordBriefing(prev:ActionState,form:FormData):Promise<ActionState> {
+ let sessionId=prev?.sessionId;
+ try {
+  const body={title:field(form,'title')||'Discord briefing',owner_name:field(form,'owner_name')||DEFAULT_OWNER,agent_name:field(form,'agent_name')||DEFAULT_AGENT};
+  const payload=knowledgePayload(form,field(form,'notes'));
+  if(sessionId){
+   const prior=await backend.getSession(sessionId);
+   if(!prior||prior.purpose!=='briefing'||prior.platform!=='discord')return {error:'Start a new Discord briefing for this attempt.'};
+   await backend.updateBriefing(sessionId,body);
+  } else sessionId=(await backend.createBriefing(body)).id;
+  if(payload.get('text')||payload.has('files'))await backend.addKnowledge(sessionId,payload);
+  await backend.prepareBriefing(sessionId);
+ }catch(e){return {sessionId,error:`Briefing saved as a draft if created. Finish adding knowledge before preparing it. ${explain(e)}`};}
+ revalidatePath('/');
+ return {sessionId,ok:'Briefing prepared. Select it with /join in Discord.'};
+}
+export async function saveBriefingMetadata(id:string,_prev:ActionState,form:FormData):Promise<ActionState> {
+ try{
+  await backend.updateBriefing(id,{title:field(form,'title'),owner_name:field(form,'owner_name'),agent_name:field(form,'agent_name')});
+  if(form.get('prepare')==='yes')await backend.prepareBriefing(id);
+ }catch(e){return {error:explain(e)};}
+ revalidatePath('/');revalidatePath(`/meetings/${id}`);return {ok:'Briefing saved.'};
+}
+export async function removeBriefing(id:string,_prev:ActionState):Promise<ActionState>{
+ try{await backend.deleteBriefing(id);}catch(e){return {error:explain(e)};}
+ revalidatePath('/');return {ok:'Briefing deleted. Meeting copies are preserved.'};
+}
+export async function controlDiscord(id:string,action:'leave'|'mute'|'unmute'|'stop-speaking',_prev:ActionState):Promise<ActionState>{
+ try{
+  const result=await backend.discordControl(id,action);
+  if(!result.ok)return {error:result.code==='leave_uncertain'?'Leaving is unconfirmed. Check attendance status before joining again.':result.code||'Control failed.'};
+ }catch(e){return {error:explain(e)};}
+ revalidatePath('/');revalidatePath(`/meetings/${id}`);return {ok:action==='leave'?'Left the voice channel.':action==='mute'?'Speech muted; notes continue.':action==='unmute'?'Speech enabled.':'Speech stopped.'};
 }

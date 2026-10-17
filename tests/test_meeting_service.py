@@ -14,6 +14,7 @@ class FakePlayback:
     def __init__(self): self.queued=[]; self.live=True; self._muted=False
     async def is_live(self,sid): return self.live
     def muted(self,sid): return self._muted
+    def available(self,sid): return True
     async def enqueue(self,sid,text,key): self.queued.append(SimpleNamespace(session_id=sid,text=text,key=key)); return key
     async def mute(self,sid,muted): self._muted=muted
     async def stop(self,sid): pass
@@ -106,3 +107,20 @@ def test_repository_transcript_contract_without_app_initialization(tmp_path):
     sid=repo.create_session(SessionCreate(title='Standalone',owner_name='Aloy')).id
     repo.add_transcript(sid,UtteranceCreate(speaker='Jamie',text='Hello'))
     assert repo.get_transcript(sid)[0].participant_id is None
+
+
+@pytest.mark.asyncio
+async def test_same_display_name_does_not_merge_speakers(tmp_path):
+    h=harness(tmp_path)
+    await h.service.ingest(h.sid,h.utterance(text='Alloy',speaker='Jamie',participant_id='one'))
+    other_participant_decision=await h.service.ingest(h.sid,h.utterance(text='When is launch?',speaker='Jamie',participant_id='two'))
+    assert other_participant_decision.action=='stay_silent'
+    await h.service.ingest(h.sid,h.utterance(text='Alloy',speaker='Jamie',participant_id='one'))
+    renamed_same_participant_decision=await h.service.ingest(h.sid,h.utterance(text='When is launch?',speaker='Renamed',participant_id='one'))
+    assert renamed_same_participant_decision.action=='answer'
+
+@pytest.mark.asyncio
+async def test_human_named_alloy_is_not_self_but_explicit_self_is(tmp_path):
+    h=harness(tmp_path)
+    assert (await h.service.ingest(h.sid,h.utterance(speaker='Alloy',participant_id='human'))).action=='answer'
+    assert (await h.service.ingest(h.sid,h.utterance(speaker='Renamed bot',participant_id='bot',is_self=True))).action=='stay_silent'
